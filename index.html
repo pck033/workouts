@@ -106,6 +106,13 @@
   .stat-tag.best b{ color: var(--ink-red-bright); }
   .stat-tag.rate b{ color: var(--ink-dark); }
 
+  .top-actions{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-bottom: 30px;
+  }
   .jump-btn{
     font-family:'JetBrains Mono', monospace;
     font-size:11px;
@@ -117,10 +124,39 @@
     border-radius: 3px;
     cursor:pointer;
     box-shadow: none;
-    margin-bottom: 30px;
+    margin-bottom: 0;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
   .jump-btn:hover{ border-color: var(--ink-blue); background: rgba(234,157,43,0.08); }
+
+  .shift-panel{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:10.5px;
+    color: var(--muted);
+    letter-spacing:0.02em;
+  }
+  .shift-panel input{
+    width:44px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    padding:5px 6px;
+    border: 1px solid var(--paper-line-strong);
+    border-radius:3px;
+    background: #081420;
+    color: var(--ink-dark);
+    text-align:right;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .shift-panel input::-webkit-outer-spin-button,
+  .shift-panel input::-webkit-inner-spin-button{
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .shift-panel input:focus{ outline: 1px solid var(--ink-blue); }
+  .shift-panel #shiftBtn{ font-size:11px; padding: 7px 12px; }
 
   .week-section{ margin-bottom: 40px; }
   .week-head{
@@ -302,9 +338,15 @@
     cursor:pointer;
     z-index:2;
   }
+  .tag-row{
+    display:flex;
+    align-items:stretch;
+    gap:4px;
+  }
   .ex-tag{
     display:block;
-    width:100%;
+    flex:1;
+    min-width:0;
     font-family:'JetBrains Mono', monospace;
     font-size:10.5px;
     padding:5px 7px;
@@ -325,6 +367,18 @@
     color: var(--ink-blue);
     background: rgba(234,157,43,0.1);
   }
+  .edit-tag-btn{
+    flex:0 0 auto;
+    width:22px;
+    font-size:10px;
+    border-radius:3px;
+    border: 1px solid var(--paper-line-strong);
+    background: transparent;
+    color: var(--muted);
+    cursor:pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .edit-tag-btn:hover{ border-color: var(--ink-blue); color: var(--ink-blue); }
 
   .add-ex-btn{
     font-family:'JetBrains Mono', monospace;
@@ -362,6 +416,11 @@
     color: var(--ink-dark);
   }
   .mini-form input:focus{ outline: 1px solid var(--ink-blue); }
+  .mini-form input.locked{
+    color: var(--ink-blue);
+    border-color: var(--ink-blue);
+    background: rgba(234,157,43,0.06);
+  }
   .mini-form .mf-row{ display:flex; gap:4px; }
   .mini-form button{
     font-family:'Space Grotesk', sans-serif;
@@ -375,6 +434,7 @@
   .mini-form .mf-add{ background: var(--ink-blue); color: var(--ink-on-accent); flex:1; }
   .mini-form .mf-cancel{ background: transparent; color: var(--muted); }
   .mf-err{ font-size:9px; color: var(--ink-red-bright); min-height:11px; }
+  .mf-hint{ font-size:9px; color: var(--ink-blue); min-height:11px; }
 
   .chosen-line{
     font-size:10.5px;
@@ -472,7 +532,15 @@
   </header>
 
   <div class="stats-row" id="statsRow"></div>
-  <button class="jump-btn" id="jumpToday">jump to this week ↓</button>
+  <div class="top-actions">
+    <button class="jump-btn" id="jumpToday">jump to this week ↓</button>
+    <div class="shift-panel">
+      <label for="shiftDaysInput">shift today onward by</label>
+      <input type="number" id="shiftDaysInput" min="1" max="60" value="1">
+      <span>days</span>
+      <button class="ghost-btn" id="shiftBtn">shift forward</button>
+    </div>
+  </div>
 
   <div id="weeksContainer"></div>
 
@@ -493,14 +561,30 @@
   const CARDIO_GOAL = 150;
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  function load(){
-    try{ const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : {}; }
-    catch(e){ return {}; }
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return { days: {}, videoTags: {} };
+      const parsed = JSON.parse(raw);
+      if(parsed && parsed.days){
+        if(!parsed.videoTags) parsed.videoTags = {};
+        return parsed;
+      }
+      // old format: the parsed object itself was the date->day map
+      return { days: parsed || {}, videoTags: {} };
+    }catch(e){ return { days: {}, videoTags: {} }; }
   }
-  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  function save(){
+    state.days = data;
+    state.videoTags = videoTags;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
 
-  let data = load(); // { 'YYYY-MM-DD': { exercises:[{id,title,url}], selectedIds:[], done:false, cardioMins:0 } }
+  let state = loadState();
+  let data = state.days; // { 'YYYY-MM-DD': { exercises:[{id,url}], selectedIds:[], done:false, cardioMins:0 } }
+  let videoTags = state.videoTags; // { videoId: "exercise name" } — one name per clip, shared everywhere it's used
   migrateSelection();
+  migrateVideoTags();
   let openFormDate = null; // which day's add-form is currently open
 
   function loadCollapsed(){
@@ -535,6 +619,24 @@
     if(changed) save();
   }
 
+  // one-time migration: exercises used to carry their own `title`; pull the
+  // first one seen per video into the shared registry.
+  function migrateVideoTags(){
+    let changed = false;
+    Object.keys(data).forEach(ds => {
+      const d = data[ds];
+      if(!d || !d.exercises) return;
+      d.exercises.forEach(ex => {
+        const vid = extractYouTubeId(ex.url);
+        if(vid && ex.title && !videoTags[vid]){
+          videoTags[vid] = ex.title;
+          changed = true;
+        }
+      });
+    });
+    if(changed) save();
+  }
+
   function extractYouTubeId(url){
     if(!url) return null;
     const patterns = [
@@ -555,6 +657,11 @@
     return `${y}-${m}-${day}`;
   }
   function todayStr(){ return fmt(new Date()); }
+  function addDaysStr(dateStr, n){
+    const d = toDate(dateStr);
+    d.setDate(d.getDate() + n);
+    return fmt(d);
+  }
 
   function buildWeeks(){
     const weeks = [];
@@ -613,12 +720,7 @@
       else run = 0;
     });
 
-    // completion rate: done days out of days elapsed so far (not the whole
-    // 70-day range, which would look artificially low early in the program)
-    const elapsedDays = past.length;
-    const completionRate = elapsedDays > 0 ? Math.round((doneDays / elapsedDays) * 100) : 0;
-
-    return { doneDays, streak, best, totalDays: allDates.length, completionRate };
+    return { doneDays, streak, best, totalDays: allDates.length };
   }
 
   function renderStats(){
@@ -627,7 +729,6 @@
       <div class="stat-tag"><b>${s.doneDays}/${s.totalDays}</b>days done</div>
       <div class="stat-tag streak"><b>${s.streak}</b>day streak</div>
       <div class="stat-tag best"><b>${s.best}</b>best streak</div>
-      <div class="stat-tag rate"><b>${s.completionRate}%</b>completion rate</div>
     `;
   }
 
@@ -638,7 +739,7 @@
     const items = d.exercises.map(ex => {
       const vid = extractYouTubeId(ex.url);
       const isSel = d.selectedIds.includes(ex.id);
-      const safeTitle = escapeHtml(ex.title || 'exercise');
+      const safeTitle = escapeHtml((vid && videoTags[vid]) || 'exercise');
       const safeUrl = escapeHtml(ex.url);
       const img = vid
         ? `<img src="https://i.ytimg.com/vi/${vid}/hqdefault.jpg" alt="${safeTitle}" loading="lazy" referrerpolicy="no-referrer"
@@ -653,9 +754,12 @@
             </a>
             <button class="del-x" data-del-ex="${ex.id}" data-date="${dateStr}" title="remove">✕</button>
           </div>
-          <button class="ex-tag ${isSel?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}">
-            ${isSel?'✓ ':''}${safeTitle}
-          </button>
+          <div class="tag-row">
+            <button class="ex-tag ${isSel?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}">
+              ${isSel?'✓ ':''}${safeTitle}
+            </button>
+            ${vid ? `<button class="edit-tag-btn" data-edit-tag="${vid}" title="rename — updates everywhere this clip is used">✎</button>` : ''}
+          </div>
         </div>`;
     }).join('');
 
@@ -671,8 +775,9 @@
         <div class="ex-items">${items}</div>
         <button class="add-ex-btn" data-toggle-form="${dateStr}">${formOpen ? '– cancel' : '+ add clip'}</button>
         <div class="mini-form ${formOpen?'open':''}" data-form-for="${dateStr}">
-          <input type="text" placeholder="exercise name" data-field="title" maxlength="60">
           <input type="text" placeholder="YouTube link" data-field="url" maxlength="200">
+          <input type="text" placeholder="exercise name" data-field="title" maxlength="60">
+          <div class="mf-hint" data-hint></div>
           <div class="mf-err" data-err></div>
           <div class="mf-row">
             <button type="button" class="mf-add" data-submit-form="${dateStr}">add</button>
@@ -763,6 +868,19 @@
       return;
     }
 
+    const editTagEl = e.target.closest('[data-edit-tag]');
+    if(editTagEl){
+      const vid = editTagEl.dataset.editTag;
+      const current = videoTags[vid] || 'exercise';
+      const next = window.prompt('Rename this exercise — updates everywhere this clip is used:', current);
+      if(next !== null){
+        const trimmed = next.trim();
+        videoTags[vid] = trimmed || 'exercise';
+        save(); renderAll();
+      }
+      return;
+    }
+
     const toggleFormEl = e.target.closest('[data-toggle-form]');
     if(toggleFormEl){
       const ds = toggleFormEl.dataset.toggleForm;
@@ -775,15 +893,21 @@
     if(submitEl){
       const ds = submitEl.dataset.submitForm;
       const formEl = document.querySelector(`[data-form-for="${ds}"]`);
-      const title = formEl.querySelector('[data-field="title"]').value.trim();
+      const titleInput = formEl.querySelector('[data-field="title"]');
       const url = formEl.querySelector('[data-field="url"]').value.trim();
       const errEl = formEl.querySelector('[data-err]');
-      if(!url || !extractYouTubeId(url)){
+      const vid = extractYouTubeId(url);
+      if(!url || !vid){
         errEl.textContent = "paste a valid YouTube link";
         return;
       }
+      // one name per clip: if this video already has a registered tag, keep
+      // using it; otherwise register whatever the user typed (or a default)
+      if(!videoTags[vid]){
+        videoTags[vid] = titleInput.value.trim() || 'exercise';
+      }
       const d = ensureDay(ds);
-      d.exercises.push({ id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, url });
+      d.exercises.push({ id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), url });
       openFormDate = null;
       save(); renderAll();
       return;
@@ -797,6 +921,28 @@
       d.done = !d.done;
       save(); renderAll();
       return;
+    }
+  });
+
+  // --- Live auto-fill: if the pasted link is already tagged elsewhere, use
+  // that name automatically (and lock the field, since one clip = one tag) ---
+  document.getElementById('weeksContainer').addEventListener('input', function(e){
+    const urlEl = e.target.closest('[data-field="url"]');
+    if(!urlEl) return;
+    const formEl = urlEl.closest('.mini-form');
+    if(!formEl) return;
+    const titleEl = formEl.querySelector('[data-field="title"]');
+    const hintEl = formEl.querySelector('[data-hint]');
+    const vid = extractYouTubeId(urlEl.value.trim());
+    if(vid && videoTags[vid]){
+      titleEl.value = videoTags[vid];
+      titleEl.setAttribute('readonly', 'readonly');
+      titleEl.classList.add('locked');
+      hintEl.textContent = 'already tagged — using the saved name';
+    } else {
+      titleEl.removeAttribute('readonly');
+      titleEl.classList.remove('locked');
+      hintEl.textContent = '';
     }
   });
 
@@ -823,9 +969,51 @@
     if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
   });
 
+  // --- Shift today-onward forward by N days ---
+  function shiftFutureDays(n){
+    const allDates = WEEKS.flat(); // ascending, fixed 70-day range
+    const pivot = todayStr();
+    const newData = {};
+    // days before today are untouched
+    allDates.forEach(ds => { if(ds < pivot && data[ds]) newData[ds] = data[ds]; });
+    // today and every future day move forward by n; anything that lands
+    // past Oct 31 falls out of the tracked range and is dropped
+    allDates.forEach(ds => {
+      if(ds >= pivot && data[ds]){
+        const shifted = addDaysStr(ds, n);
+        if(shifted >= RANGE_START && shifted <= RANGE_END){
+          newData[shifted] = data[ds];
+        }
+      }
+    });
+    data = newData;
+    save();
+    renderAll();
+  }
+
+  document.getElementById('shiftBtn').addEventListener('click', function(){
+    const input = document.getElementById('shiftDaysInput');
+    const n = parseInt(input.value, 10);
+    if(!n || n < 1){
+      alert('enter a number of days to shift by (1 or more)');
+      return;
+    }
+    const pivot = todayStr();
+    const allDates = WEEKS.flat();
+    const affected = allDates.filter(ds => ds >= pivot && data[ds] &&
+      ((data[ds].exercises && data[ds].exercises.length) || data[ds].done || data[ds].cardioMins));
+    const overflow = affected.filter(ds => addDaysStr(ds, n) > RANGE_END);
+    let msg = `Shift today (${pivot}) and every day after it forward by ${n} day${n===1?'':'s'}?`;
+    if(overflow.length > 0){
+      msg += `\n\n${overflow.length} day(s) with data would land after Oct 31 and be lost.`;
+    }
+    if(!window.confirm(msg)) return;
+    shiftFutureDays(n);
+  });
+
   // --- Backup ---
   document.getElementById('exportBtn').addEventListener('click', function(){
-    const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+    const blob = new Blob([JSON.stringify({ days: data, videoTags: videoTags }, null, 2)], {type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'training-log-backup.json';
@@ -843,7 +1031,16 @@
       try{
         const imported = JSON.parse(evt.target.result);
         if(imported && typeof imported === 'object'){
-          data = imported;
+          if(imported.days){
+            data = imported.days;
+            videoTags = imported.videoTags || {};
+          } else {
+            // old-format backup: flat date map, no shared tag registry yet
+            data = imported;
+            videoTags = {};
+          }
+          migrateSelection();
+          migrateVideoTags();
           save(); renderAll();
         }
       }catch(err){ alert('could not read that file'); }
