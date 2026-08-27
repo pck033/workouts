@@ -103,6 +103,8 @@
     margin-bottom:2px;
   }
   .stat-tag.streak b{ color: var(--ink-blue); }
+  .stat-tag.best b{ color: var(--ink-red-bright); }
+  .stat-tag.rate b{ color: var(--ink-dark); }
 
   .jump-btn{
     font-family:'JetBrains Mono', monospace;
@@ -584,20 +586,39 @@
   }
 
   function computeStats(){
-    const allDates = WEEKS.flat();
+    const allDates = WEEKS.flat(); // chronological, ascending
     let doneDays = 0;
     allDates.forEach(ds => {
       const d = data[ds];
       if(d && d.done) doneDays++;
     });
-    // streak: consecutive done days counting back from today (or latest past day) within range
-    const past = allDates.filter(ds => ds <= todayStr()).sort((a,b)=> a<b?1:-1);
+
+    // current streak: consecutive done days ending at the most recent day you
+    // actually marked done (today or earlier) — an un-checked today doesn't
+    // zero it out, it just means the streak hasn't grown yet.
+    const past = allDates.filter(ds => ds <= todayStr()).slice().reverse(); // most recent first
     let streak = 0;
-    for(const ds of past){
-      if(data[ds] && data[ds].done) streak++;
-      else break;
+    const startIdx = past.findIndex(ds => data[ds] && data[ds].done);
+    if(startIdx !== -1){
+      for(let i = startIdx; i < past.length; i++){
+        if(data[past[i]] && data[past[i]].done) streak++;
+        else break;
+      }
     }
-    return { doneDays, streak, totalDays: allDates.length };
+
+    // best streak: the longest unbroken run of done days anywhere in the range
+    let best = 0, run = 0;
+    allDates.forEach(ds => {
+      if(data[ds] && data[ds].done){ run++; if(run > best) best = run; }
+      else run = 0;
+    });
+
+    // completion rate: done days out of days elapsed so far (not the whole
+    // 70-day range, which would look artificially low early in the program)
+    const elapsedDays = past.length;
+    const completionRate = elapsedDays > 0 ? Math.round((doneDays / elapsedDays) * 100) : 0;
+
+    return { doneDays, streak, best, totalDays: allDates.length, completionRate };
   }
 
   function renderStats(){
@@ -605,6 +626,8 @@
     document.getElementById('statsRow').innerHTML = `
       <div class="stat-tag"><b>${s.doneDays}/${s.totalDays}</b>days done</div>
       <div class="stat-tag streak"><b>${s.streak}</b>day streak</div>
+      <div class="stat-tag best"><b>${s.best}</b>best streak</div>
+      <div class="stat-tag rate"><b>${s.completionRate}%</b>completion rate</div>
     `;
   }
 
