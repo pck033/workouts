@@ -129,6 +129,21 @@
     padding-bottom:8px;
     border-bottom: 1px solid var(--paper-line-strong);
   }
+  .week-toggle{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    width:20px; height:20px;
+    flex:0 0 auto;
+    display:flex; align-items:center; justify-content:center;
+    background: transparent;
+    border: 1px solid var(--paper-line-strong);
+    border-radius:4px;
+    color: var(--muted);
+    cursor:pointer;
+    padding:0;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .week-toggle:hover{ border-color: var(--ink-blue); color: var(--ink-blue); }
   .week-head h2{
     font-family:'Space Grotesk', sans-serif;
     font-weight:600;
@@ -225,55 +240,88 @@
   .day-head .dnum{ font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:16px; }
   .day-head .dow{ font-size:9.5px; color: var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
 
-  .ex-thumbs{
-    display:flex;
-    flex-wrap:wrap;
-    gap:5px;
-    margin-bottom:6px;
-  }
-  .ex-thumb{
-    width:52px; height:38px;
+  .ex-item{ margin-bottom:8px; }
+  .ex-thumb-wrap{
     position:relative;
-    border-radius:4px;
+    width:100%;
+    aspect-ratio: 16/9;
+    border-radius:5px;
     overflow:hidden;
-    cursor:pointer;
     border:1px solid transparent;
-    flex:0 0 auto;
+    background:#0C1D2E;
     transition: border-color 0.15s ease;
+    margin-bottom:4px;
   }
-  .ex-thumb.selected{ border-color: var(--ink-blue); box-shadow: 0 0 0 1px var(--ink-blue); }
-  .ex-thumb img{ width:100%; height:100%; object-fit:cover; display:block; background:#0C1D2E; }
-  .ex-thumb .play-mini{
+  .ex-thumb-wrap.selected{ border-color: var(--ink-blue); box-shadow: 0 0 0 1px var(--ink-blue); }
+  .ex-thumb-link{ display:block; width:100%; height:100%; }
+  .ex-thumb-link img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .ex-thumb-wrap.thumb-broken{
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ex-thumb-wrap.thumb-broken::before{
+    content:"clip unavailable";
+    font-size:9.5px;
+    color: var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+  }
+  .ex-thumb-wrap .play-mini{
     position:absolute; inset:0;
     display:flex; align-items:center; justify-content:center;
-    background: rgba(0,0,0,0.22);
+    background: rgba(0,0,0,0.18);
+    pointer-events:none;
   }
-  .ex-thumb .play-mini::after{
+  .ex-thumb-wrap .play-mini::after{
     content:"";
+    width:30px; height:30px;
+    border-radius:50%;
+    background: rgba(0,0,0,0.55);
+    display:block;
+  }
+  .ex-thumb-wrap .play-mini::before{
+    content:"";
+    position:absolute; top:50%; left:50%;
+    transform: translate(-40%,-50%);
     border-style: solid;
-    border-width: 5px 0 5px 8px;
+    border-width: 7px 0 7px 11px;
     border-color: transparent transparent transparent #fff;
-    margin-left:1px;
+    z-index:1;
   }
-  .ex-thumb .del-x{
-    position:absolute; top:1px; right:1px;
-    background: rgba(0,0,0,0.65);
+  .ex-thumb-wrap .del-x{
+    position:absolute; top:4px; right:4px;
+    background: rgba(0,0,0,0.7);
     color:#fff;
-    font-size:9px;
-    width:13px; height:13px;
+    font-size:11px;
+    width:20px; height:20px;
+    border:none;
     border-radius:50%;
     display:flex; align-items:center; justify-content:center;
     line-height:1;
+    cursor:pointer;
+    z-index:2;
   }
-  .ex-thumb .sel-mark{
-    position:absolute; bottom:1px; left:1px;
-    background: var(--ink-blue);
-    color: var(--ink-on-accent);
-    font-size:9px;
-    width:13px; height:13px;
-    border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    line-height:1;
+  .ex-tag{
+    display:block;
+    width:100%;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    padding:5px 7px;
+    border-radius:3px;
+    border: 1px solid var(--paper-line-strong);
+    background: transparent;
+    color: var(--muted);
+    cursor:pointer;
+    text-align:left;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  .ex-tag:hover{ border-color: var(--ink-blue); color: var(--ink-blue); }
+  .ex-tag.selected{
+    border-color: var(--ink-blue);
+    color: var(--ink-blue);
+    background: rgba(234,157,43,0.1);
   }
 
   .add-ex-btn{
@@ -356,6 +404,13 @@
     background: #081420;
     color: var(--ink-dark);
     text-align:right;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .cardio-input::-webkit-outer-spin-button,
+  .cardio-input::-webkit-inner-spin-button{
+    -webkit-appearance: none;
+    margin: 0;
   }
   .cardio-input:focus{ outline: 1px solid var(--ink-blue); }
   .cardio-unit{ font-size:9.5px; color: var(--muted); }
@@ -400,22 +455,7 @@
   .ghost-btn:hover{ border-color: var(--ink-blue); color: var(--ink-blue); }
   input[type=file]{ display:none; }
 
-  .modal-overlay{
-    position:fixed; inset:0; background: rgba(15,17,20,0.82);
-    display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
-  }
-  .modal-overlay.open{ display:flex; }
-  .modal-box{ width:100%; max-width:720px; }
-  .modal-box .frame-wrap{
-    position:relative; width:100%; padding-top:56.25%; background:#000;
-    border-radius:4px; overflow:hidden;
-  }
-  .modal-box iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
-  .modal-close{
-    display:block; margin: 10px auto 0 auto; font-family:'Space Grotesk', sans-serif; font-size:15px;
-    color: #EEE; background: none; border: 1px solid #555; padding: 6px 18px;
-    border-radius: 20px; cursor:pointer;
-  }
+
 
   @media (prefers-reduced-motion: reduce){ * { transition:none !important; } }
 </style>
@@ -442,14 +482,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="modalOverlay">
-  <div class="modal-box">
-    <div class="frame-wrap">
-      <iframe id="modalFrame" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-    </div>
-    <button class="modal-close" id="modalClose">close ✕</button>
-  </div>
-</div>
 
 <script>
 (function(){
@@ -465,8 +497,19 @@
   }
   function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
 
-  let data = load(); // { 'YYYY-MM-DD': { exercises:[{id,title,url}], selectedId:null, done:false } }
+  let data = load(); // { 'YYYY-MM-DD': { exercises:[{id,title,url}], selectedId:null, done:false, cardioMins:0 } }
   let openFormDate = null; // which day's add-form is currently open
+
+  function loadCollapsed(){
+    try{
+      const raw = localStorage.getItem('trainingLogCollapsedWeeks');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    }catch(e){ return new Set(); }
+  }
+  function saveCollapsed(){
+    localStorage.setItem('trainingLogCollapsedWeeks', JSON.stringify([...collapsedWeeks]));
+  }
+  let collapsedWeeks = loadCollapsed(); // Set of week-index strings
 
   function ensureDay(dateStr){
     if(!data[dateStr]) data[dateStr] = { exercises: [], selectedId: null, done: false, cardioMins: 0 };
@@ -553,21 +596,29 @@
     const d = data[dateStr] || { exercises:[], selectedId:null, done:false, cardioMins:0 };
     const dt = toDate(dateStr);
     const isToday = dateStr === todayStr();
-    const thumbs = d.exercises.map(ex => {
+    const items = d.exercises.map(ex => {
       const vid = extractYouTubeId(ex.url);
-      const img = vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : '';
       const isSel = d.selectedId === ex.id;
+      const safeTitle = escapeHtml(ex.title || 'exercise');
+      const safeUrl = escapeHtml(ex.url);
+      const img = vid
+        ? `<img src="https://i.ytimg.com/vi/${vid}/hqdefault.jpg" alt="${safeTitle}" loading="lazy" referrerpolicy="no-referrer"
+             onerror="if(this.dataset.step==='1'){this.style.display='none';this.parentElement.classList.add('thumb-broken');}else{this.dataset.step='1';this.src='https://img.youtube.com/vi/${vid}/hqdefault.jpg';}">`
+        : '';
       return `
-        <div class="ex-thumb ${isSel?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}" title="${escapeHtml(ex.title||'')}">
-          ${img ? `<img src="${img}" alt="${escapeHtml(ex.title||'exercise clip')}" loading="lazy" data-watch-vid="${vid}" data-date="${dateStr}">` : `<div style="width:100%;height:100%;background:#0C1D2E;"></div>`}
-          <div class="play-mini" data-watch-vid="${vid||''}" data-date="${dateStr}"></div>
-          ${isSel ? '<div class="sel-mark">✓</div>' : ''}
-          <div class="del-x" data-del-ex="${ex.id}" data-date="${dateStr}">✕</div>
+        <div class="ex-item">
+          <div class="ex-thumb-wrap ${isSel?'selected':''}">
+            <a class="ex-thumb-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer" title="Watch on YouTube: ${safeTitle}">
+              ${img}
+              <div class="play-mini"></div>
+            </a>
+            <button class="del-x" data-del-ex="${ex.id}" data-date="${dateStr}" title="remove">✕</button>
+          </div>
+          <button class="ex-tag ${isSel?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}">
+            ${isSel?'✓ ':''}${safeTitle}
+          </button>
         </div>`;
     }).join('');
-
-    const selectedEx = d.exercises.find(e => e.id === d.selectedId);
-    const chosenLine = selectedEx ? `<div class="chosen-line">▸ ${escapeHtml(selectedEx.title || 'chosen clip')}</div>` : '';
 
     const formOpen = openFormDate === dateStr;
 
@@ -578,8 +629,7 @@
           <span class="dnum">${dt.getDate()}</span>
           <span class="dow">${DOW[dt.getDay()]}${isToday?' · today':''}</span>
         </div>
-        <div class="ex-thumbs">${thumbs}</div>
-        ${chosenLine}
+        <div class="ex-items">${items}</div>
         <button class="add-ex-btn" data-toggle-form="${dateStr}">${formOpen ? '– cancel' : '+ add clip'}</button>
         <div class="mini-form ${formOpen?'open':''}" data-form-for="${dateStr}">
           <input type="text" placeholder="exercise name" data-field="title" maxlength="60">
@@ -596,7 +646,7 @@
           <span class="cardio-unit">min</span>
         </div>
         <div class="day-foot">
-          <button class="done-btn ${d.done?'is-done':''}" data-toggle-done="${dateStr}" ${!d.selectedId?'disabled':''}>
+          <button class="done-btn ${d.done?'is-done':''}" data-toggle-done="${dateStr}" ${!d.selectedId?'disabled':''} title="${!d.selectedId ? 'pick an exercise below first' : ''}">
             ${d.done ? '✓ done' : 'mark done'}
           </button>
         </div>
@@ -606,6 +656,8 @@
   function renderWeeks(){
     const container = document.getElementById('weeksContainer');
     container.innerHTML = WEEKS.map((week, wi) => {
+      const wiStr = String(wi);
+      const collapsed = collapsedWeeks.has(wiStr);
       const doneCount = week.filter(ds => data[ds] && data[ds].done).length;
       const cardioTotal = week.reduce((sum, ds) => sum + ((data[ds] && data[ds].cardioMins) || 0), 0);
       const cardioPct = Math.min(100, Math.round((cardioTotal / CARDIO_GOAL) * 100));
@@ -613,6 +665,7 @@
       return `
         <section class="week-section" id="week-${wi}" data-week-index="${wi}">
           <div class="week-head">
+            <button class="week-toggle" data-toggle-week="${wi}" aria-expanded="${!collapsed}">${collapsed?'▸':'▾'}</button>
             <h2>${weekLabel(week)}</h2>
             <span class="week-progress">${doneCount}/7 done</span>
             <div class="cardio-week-stat ${goalMet?'met':''}">
@@ -620,7 +673,7 @@
               <div class="cardio-bar-track"><div class="cardio-bar-fill" style="width:${cardioPct}%"></div></div>
             </div>
           </div>
-          <div class="week-grid">
+          <div class="week-grid" ${collapsed?'style="display:none"':''}>
             ${week.map(renderDayCell).join('')}
           </div>
         </section>`;
@@ -632,10 +685,17 @@
   // --- Event delegation ---
   document.getElementById('weeksContainer').addEventListener('click', function(e){
 
-    const watchEl = e.target.closest('[data-watch-vid]');
-    if(watchEl){
-      const vid = watchEl.dataset.watchVid;
-      if(vid){ openModal(vid); }
+    const toggleWeekEl = e.target.closest('[data-toggle-week]');
+    if(toggleWeekEl){
+      const wi = toggleWeekEl.dataset.toggleWeek;
+      if(collapsedWeeks.has(wi)) collapsedWeeks.delete(wi); else collapsedWeeks.add(wi);
+      saveCollapsed();
+      const section = document.getElementById('week-'+wi);
+      const grid = section.querySelector('.week-grid');
+      const nowCollapsed = collapsedWeeks.has(wi);
+      grid.style.display = nowCollapsed ? 'none' : '';
+      toggleWeekEl.textContent = nowCollapsed ? '▸' : '▾';
+      toggleWeekEl.setAttribute('aria-expanded', String(!nowCollapsed));
       return;
     }
 
@@ -709,18 +769,6 @@
       save(); renderAll();
     }
   });
-
-  // --- Modal ---
-  const overlay = document.getElementById('modalOverlay');
-  const frame = document.getElementById('modalFrame');
-  function openModal(vid){
-    frame.src = `https://www.youtube.com/embed/${vid}?autoplay=1`;
-    overlay.classList.add('open');
-  }
-  function closeModal(){ overlay.classList.remove('open'); frame.src=''; }
-  document.getElementById('modalClose').addEventListener('click', closeModal);
-  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeModal(); });
-  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
 
   // --- Jump to current week ---
   document.getElementById('jumpToday').addEventListener('click', function(){
