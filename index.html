@@ -323,20 +323,6 @@
     cursor:pointer;
     z-index:2;
   }
-  .ex-thumb-wrap .edit-link-btn{
-    position:absolute; top:4px; left:4px;
-    background: rgba(0,0,0,0.7);
-    color:#fff;
-    font-size:10px;
-    width:20px; height:20px;
-    border:none;
-    border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    line-height:1;
-    cursor:pointer;
-    z-index:2;
-  }
-  .ex-thumb-wrap .edit-link-btn:hover,
   .ex-thumb-wrap .del-x:hover{ background: rgba(0,0,0,0.9); }
   .tag-row{
     display:flex;
@@ -754,14 +740,13 @@
               ${img}
               <div class="play-mini"></div>
             </a>
-            <button class="edit-link-btn" data-edit-link="${ex.id}" data-date="${dateStr}" title="change this clip's link">🔗</button>
             <button class="del-x" data-del-ex="${ex.id}" data-date="${dateStr}" title="remove">✕</button>
           </div>
           <div class="tag-row">
             <button class="ex-tag ${isSel?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}">
               ${isSel?'✓ ':''}${safeTitle}
             </button>
-            ${vid ? `<button class="edit-tag-btn" data-edit-tag="${vid}" title="rename — updates everywhere this clip is used">✎</button>` : ''}
+            <button class="edit-tag-btn" data-edit-clip="${ex.id}" data-date="${dateStr}" title="edit link or rename">✎</button>
           </div>
         </div>`;
     }).join('');
@@ -870,39 +855,32 @@
       return;
     }
 
-    const editTagEl = e.target.closest('[data-edit-tag]');
-    if(editTagEl){
-      const vid = editTagEl.dataset.editTag;
-      const current = videoTags[vid] || 'exercise';
-      const next = window.prompt('Rename this exercise — updates everywhere this clip is used:', current);
-      if(next !== null){
-        const trimmed = next.trim();
-        videoTags[vid] = trimmed || 'exercise';
-        save(); renderAll();
-      }
-      return;
-    }
-
-    const editLinkEl = e.target.closest('[data-edit-link]');
-    if(editLinkEl){
-      const ds = editLinkEl.dataset.date, id = editLinkEl.dataset.editLink;
+    const editClipEl = e.target.closest('[data-edit-clip]');
+    if(editClipEl){
+      const ds = editClipEl.dataset.date, id = editClipEl.dataset.editClip;
       const d = ensureDay(ds);
       const ex = d.exercises.find(x => x.id === id);
       if(!ex) return;
-      const nextUrl = window.prompt("Update this clip's YouTube link:", ex.url);
-      if(nextUrl === null) return; // cancelled
+
+      // step 1: link (leave as-is or paste a new one)
+      const nextUrl = window.prompt("Edit this clip — YouTube link:", ex.url);
+      if(nextUrl === null) return; // cancelled entirely
       const trimmedUrl = nextUrl.trim();
-      const newVid = extractYouTubeId(trimmedUrl);
-      if(!trimmedUrl || !newVid){
+      const vid = extractYouTubeId(trimmedUrl);
+      if(!trimmedUrl || !vid){
         alert("that doesn't look like a valid YouTube link");
         return;
       }
       ex.url = trimmedUrl;
-      // if this points at a video we've never tagged before, ask for a name
-      if(!videoTags[newVid]){
-        const name = window.prompt('New clip — give it an exercise name:', '');
-        videoTags[newVid] = (name && name.trim()) || 'exercise';
+
+      // step 2: name — renames this clip everywhere it's used
+      const currentName = videoTags[vid] || 'exercise';
+      const nextName = window.prompt('Exercise name (updates everywhere this clip is used):', currentName);
+      if(nextName !== null){
+        const trimmedName = nextName.trim();
+        videoTags[vid] = trimmedName || 'exercise';
       }
+
       save(); renderAll();
       return;
     }
