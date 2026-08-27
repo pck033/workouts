@@ -392,7 +392,17 @@
     padding:6px;
   }
   .mini-form.open{ display:flex; }
-  .mini-form input{
+  .edit-clip-form{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    margin-bottom:6px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid var(--ink-blue);
+    border-radius:4px;
+    padding:6px;
+  }
+  .mini-form input, .edit-clip-form input{
     font-family:'JetBrains Mono', monospace;
     font-size:10.5px;
     padding:5px 6px;
@@ -401,14 +411,14 @@
     background: #081420;
     color: var(--ink-dark);
   }
-  .mini-form input:focus{ outline: 1px solid var(--ink-blue); }
+  .mini-form input:focus, .edit-clip-form input:focus{ outline: 1px solid var(--ink-blue); }
   .mini-form input.locked{
     color: var(--ink-blue);
     border-color: var(--ink-blue);
     background: rgba(234,157,43,0.06);
   }
-  .mini-form .mf-row{ display:flex; gap:4px; }
-  .mini-form button{
+  .mini-form .mf-row, .edit-clip-form .mf-row{ display:flex; gap:4px; }
+  .mini-form button, .edit-clip-form button{
     font-family:'Space Grotesk', sans-serif;
     font-weight:600;
     font-size:11px;
@@ -417,8 +427,8 @@
     padding:5px 8px;
     cursor:pointer;
   }
-  .mini-form .mf-add{ background: var(--ink-blue); color: var(--ink-on-accent); flex:1; }
-  .mini-form .mf-cancel{ background: transparent; color: var(--muted); }
+  .mini-form .mf-add, .edit-clip-form .mf-add{ background: var(--ink-blue); color: var(--ink-on-accent); flex:1; }
+  .mini-form .mf-cancel, .edit-clip-form .mf-cancel{ background: transparent; color: var(--muted); border:1px solid var(--paper-line-strong); }
   .mf-err{ font-size:9px; color: var(--ink-red-bright); min-height:11px; }
   .mf-hint{ font-size:9px; color: var(--ink-blue); min-height:11px; }
 
@@ -574,6 +584,7 @@
   migrateSelection();
   migrateVideoTags();
   let openFormDate = null; // which day's add-form is currently open
+  let editingClip = null; // "date#exerciseId" of the clip currently in its edit form, or null
 
   function loadCollapsed(){
     try{
@@ -668,9 +679,12 @@
   const WEEKS = buildWeeks();
 
   function escapeHtml(str){
-    const d = document.createElement('div');
-    d.textContent = str || '';
-    return d.innerHTML;
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function weekLabel(week){
@@ -727,26 +741,49 @@
     const items = d.exercises.map(ex => {
       const vid = extractYouTubeId(ex.url);
       const isSel = d.selectedIds.includes(ex.id);
-      const safeTitle = escapeHtml((vid && videoTags[vid]) || 'exercise');
+      const currentName = (vid && videoTags[vid]) || 'exercise';
+      const safeTitle = escapeHtml(currentName);
       const safeUrl = escapeHtml(ex.url);
+      const clipKey = dateStr + '#' + ex.id;
+      const isEditing = editingClip === clipKey;
       const img = vid
         ? `<img src="https://i.ytimg.com/vi/${vid}/hqdefault.jpg" alt="${safeTitle}" loading="lazy" referrerpolicy="no-referrer"
              onerror="if(this.dataset.step==='1'){this.style.display='none';this.parentElement.classList.add('thumb-broken');}else{this.dataset.step='1';this.src='https://img.youtube.com/vi/${vid}/hqdefault.jpg';}">`
         : '';
-      return `
-        <div class="ex-item">
+
+      const thumbBlock = `
           <div class="ex-thumb-wrap ${isSel?'selected':''}">
             <a class="ex-thumb-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer" title="Watch on YouTube: ${safeTitle}">
               ${img}
               <div class="play-mini"></div>
             </a>
             <button class="del-x" data-del-ex="${ex.id}" data-date="${dateStr}" title="remove">✕</button>
+          </div>`;
+
+      if(isEditing){
+        return `
+        <div class="ex-item">
+          ${thumbBlock}
+          <div class="edit-clip-form">
+            <input type="text" class="edit-clip-input" data-editfield="url" value="${safeUrl}" placeholder="YouTube link" maxlength="200">
+            <input type="text" class="edit-clip-input" data-editfield="name" value="${escapeHtml(currentName === 'exercise' ? '' : currentName)}" placeholder="exercise name" maxlength="60">
+            <div class="mf-err" data-edit-err></div>
+            <div class="mf-row">
+              <button type="button" class="mf-add" data-save-edit-clip="${ex.id}" data-date="${dateStr}">save</button>
+              <button type="button" class="mf-cancel" data-cancel-edit-clip="1">cancel</button>
+            </div>
           </div>
+        </div>`;
+      }
+
+      return `
+        <div class="ex-item">
+          ${thumbBlock}
           <div class="tag-row">
             <button class="ex-tag ${isSel?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}">
               ${isSel?'✓ ':''}${safeTitle}
             </button>
-            <button class="edit-tag-btn" data-edit-clip="${ex.id}" data-date="${dateStr}" title="edit link or rename">✎</button>
+            <button class="edit-tag-btn" data-toggle-edit-clip="${clipKey}" title="edit link or name">✎</button>
           </div>
         </div>`;
     }).join('');
@@ -855,32 +892,39 @@
       return;
     }
 
-    const editClipEl = e.target.closest('[data-edit-clip]');
-    if(editClipEl){
-      const ds = editClipEl.dataset.date, id = editClipEl.dataset.editClip;
+    const toggleEditEl = e.target.closest('[data-toggle-edit-clip]');
+    if(toggleEditEl){
+      const key = toggleEditEl.dataset.toggleEditClip;
+      editingClip = (editingClip === key) ? null : key;
+      renderWeeks();
+      return;
+    }
+
+    const cancelEditEl = e.target.closest('[data-cancel-edit-clip]');
+    if(cancelEditEl){
+      editingClip = null;
+      renderWeeks();
+      return;
+    }
+
+    const saveEditEl = e.target.closest('[data-save-edit-clip]');
+    if(saveEditEl){
+      const ds = saveEditEl.dataset.date, id = saveEditEl.dataset.saveEditClip;
+      const formEl = saveEditEl.closest('.edit-clip-form');
+      const urlVal = formEl.querySelector('[data-editfield="url"]').value.trim();
+      const nameVal = formEl.querySelector('[data-editfield="name"]').value.trim();
+      const errEl = formEl.querySelector('[data-edit-err]');
+      const vid = extractYouTubeId(urlVal);
+      if(!urlVal || !vid){
+        errEl.textContent = "paste a valid YouTube link";
+        return;
+      }
       const d = ensureDay(ds);
       const ex = d.exercises.find(x => x.id === id);
       if(!ex) return;
-
-      // step 1: link (leave as-is or paste a new one)
-      const nextUrl = window.prompt("Edit this clip — YouTube link:", ex.url);
-      if(nextUrl === null) return; // cancelled entirely
-      const trimmedUrl = nextUrl.trim();
-      const vid = extractYouTubeId(trimmedUrl);
-      if(!trimmedUrl || !vid){
-        alert("that doesn't look like a valid YouTube link");
-        return;
-      }
-      ex.url = trimmedUrl;
-
-      // step 2: name — renames this clip everywhere it's used
-      const currentName = videoTags[vid] || 'exercise';
-      const nextName = window.prompt('Exercise name (updates everywhere this clip is used):', currentName);
-      if(nextName !== null){
-        const trimmedName = nextName.trim();
-        videoTags[vid] = trimmedName || 'exercise';
-      }
-
+      ex.url = urlVal;
+      videoTags[vid] = nameVal || 'exercise';
+      editingClip = null;
       save(); renderAll();
       return;
     }
