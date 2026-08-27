@@ -136,6 +136,7 @@
     font-size:10.5px;
     color: var(--muted);
     letter-spacing:0.02em;
+    flex-wrap:wrap;
   }
   .shift-panel input{
     width:44px;
@@ -150,6 +151,7 @@
     -moz-appearance: textfield;
     appearance: textfield;
   }
+  .shift-panel input[type="date"]{ width:126px; text-align:left; }
   .shift-panel input::-webkit-outer-spin-button,
   .shift-panel input::-webkit-inner-spin-button{
     -webkit-appearance: none;
@@ -251,23 +253,6 @@
   .day-cell:hover{ border-color: rgba(255,255,255,0.18); }
   .day-cell.today{ border-color: var(--ink-blue); }
   .day-cell.done{ background: var(--card-bg-done); opacity:0.82; }
-
-  .day-cell .stamp-overlay{
-    position:absolute;
-    top:8px; right:8px;
-    font-family:'Space Grotesk', sans-serif;
-    font-size:11px;
-    font-weight:600;
-    color: var(--ink-on-accent);
-    border: none;
-    border-radius: 50%;
-    width:18px; height:18px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    opacity:1;
-    background: var(--ink-red-bright);
-  }
 
   .day-head{
     display:flex;
@@ -535,10 +520,12 @@
   <div class="top-actions">
     <button class="jump-btn" id="jumpToday">jump to this week ↓</button>
     <div class="shift-panel">
-      <label for="shiftDaysInput">shift today onward by</label>
+      <label for="shiftFromInput">shift from</label>
+      <input type="date" id="shiftFromInput" min="2026-08-23" max="2026-10-31">
+      <label for="shiftDaysInput">forward by</label>
       <input type="number" id="shiftDaysInput" min="1" max="60" value="1">
       <span>days</span>
-      <button class="ghost-btn" id="shiftBtn">shift forward</button>
+      <button class="ghost-btn" id="shiftBtn">shift</button>
     </div>
   </div>
 
@@ -767,7 +754,6 @@
 
     return `
       <div class="day-cell ${isToday?'today':''} ${d.done?'done':''}" data-date="${dateStr}">
-        ${d.done ? '<div class="stamp-overlay">✓</div>' : ''}
         <div class="day-head">
           <span class="dnum">${dt.getDate()}</span>
           <span class="dow">${DOW[dt.getDay()]}${isToday?' · today':''}</span>
@@ -969,14 +955,13 @@
     if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
   });
 
-  // --- Shift today-onward forward by N days ---
-  function shiftFutureDays(n){
+  // --- Shift a chosen date (and everything after it) forward by N days ---
+  function shiftFutureDays(pivot, n){
     const allDates = WEEKS.flat(); // ascending, fixed 70-day range
-    const pivot = todayStr();
     const newData = {};
-    // days before today are untouched
+    // days before the chosen pivot are untouched
     allDates.forEach(ds => { if(ds < pivot && data[ds]) newData[ds] = data[ds]; });
-    // today and every future day move forward by n; anything that lands
+    // pivot and every day after it move forward by n; anything that lands
     // past Oct 31 falls out of the tracked range and is dropped
     allDates.forEach(ds => {
       if(ds >= pivot && data[ds]){
@@ -991,24 +976,32 @@
     renderAll();
   }
 
+  // default the picker to today
+  document.getElementById('shiftFromInput').value = todayStr();
+
   document.getElementById('shiftBtn').addEventListener('click', function(){
-    const input = document.getElementById('shiftDaysInput');
-    const n = parseInt(input.value, 10);
+    const dateInput = document.getElementById('shiftFromInput');
+    const daysInput = document.getElementById('shiftDaysInput');
+    const pivot = dateInput.value;
+    const n = parseInt(daysInput.value, 10);
+    if(!pivot || pivot < RANGE_START || pivot > RANGE_END){
+      alert('pick a valid date within Aug 23 – Oct 31, 2026');
+      return;
+    }
     if(!n || n < 1){
       alert('enter a number of days to shift by (1 or more)');
       return;
     }
-    const pivot = todayStr();
     const allDates = WEEKS.flat();
     const affected = allDates.filter(ds => ds >= pivot && data[ds] &&
       ((data[ds].exercises && data[ds].exercises.length) || data[ds].done || data[ds].cardioMins));
     const overflow = affected.filter(ds => addDaysStr(ds, n) > RANGE_END);
-    let msg = `Shift today (${pivot}) and every day after it forward by ${n} day${n===1?'':'s'}?`;
+    let msg = `Shift ${pivot} and every day after it forward by ${n} day${n===1?'':'s'}?`;
     if(overflow.length > 0){
       msg += `\n\n${overflow.length} day(s) with data would land after Oct 31 and be lost.`;
     }
     if(!window.confirm(msg)) return;
-    shiftFutureDays(n);
+    shiftFutureDays(pivot, n);
   });
 
   // --- Backup ---
