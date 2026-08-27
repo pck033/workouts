@@ -497,7 +497,8 @@
   }
   function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
 
-  let data = load(); // { 'YYYY-MM-DD': { exercises:[{id,title,url}], selectedId:null, done:false, cardioMins:0 } }
+  let data = load(); // { 'YYYY-MM-DD': { exercises:[{id,title,url}], selectedIds:[], done:false, cardioMins:0 } }
+  migrateSelection();
   let openFormDate = null; // which day's add-form is currently open
 
   function loadCollapsed(){
@@ -512,9 +513,24 @@
   let collapsedWeeks = loadCollapsed(); // Set of week-index strings
 
   function ensureDay(dateStr){
-    if(!data[dateStr]) data[dateStr] = { exercises: [], selectedId: null, done: false, cardioMins: 0 };
+    if(!data[dateStr]) data[dateStr] = { exercises: [], selectedIds: [], done: false, cardioMins: 0 };
     if(data[dateStr].cardioMins === undefined) data[dateStr].cardioMins = 0;
+    if(!Array.isArray(data[dateStr].selectedIds)) data[dateStr].selectedIds = [];
     return data[dateStr];
+  }
+
+  // one-time migration: old format used a single `selectedId` field
+  function migrateSelection(){
+    let changed = false;
+    Object.keys(data).forEach(ds => {
+      const d = data[ds];
+      if(d && !Array.isArray(d.selectedIds)){
+        d.selectedIds = d.selectedId ? [d.selectedId] : [];
+        delete d.selectedId;
+        changed = true;
+      }
+    });
+    if(changed) save();
   }
 
   function extractYouTubeId(url){
@@ -593,12 +609,12 @@
   }
 
   function renderDayCell(dateStr){
-    const d = data[dateStr] || { exercises:[], selectedId:null, done:false, cardioMins:0 };
+    const d = data[dateStr] || { exercises:[], selectedIds:[], done:false, cardioMins:0 };
     const dt = toDate(dateStr);
     const isToday = dateStr === todayStr();
     const items = d.exercises.map(ex => {
       const vid = extractYouTubeId(ex.url);
-      const isSel = d.selectedId === ex.id;
+      const isSel = d.selectedIds.includes(ex.id);
       const safeTitle = escapeHtml(ex.title || 'exercise');
       const safeUrl = escapeHtml(ex.url);
       const img = vid
@@ -646,7 +662,7 @@
           <span class="cardio-unit">min</span>
         </div>
         <div class="day-foot">
-          <button class="done-btn ${d.done?'is-done':''}" data-toggle-done="${dateStr}" ${!d.selectedId?'disabled':''} title="${!d.selectedId ? 'pick an exercise below first' : ''}">
+          <button class="done-btn ${d.done?'is-done':''}" data-toggle-done="${dateStr}" ${d.selectedIds.length===0?'disabled':''} title="${d.selectedIds.length===0 ? 'pick at least one exercise below first' : ''}">
             ${d.done ? '✓ done' : 'mark done'}
           </button>
         </div>
@@ -704,7 +720,8 @@
       const ds = delEl.dataset.date, id = delEl.dataset.delEx;
       const d = ensureDay(ds);
       d.exercises = d.exercises.filter(x => x.id !== id);
-      if(d.selectedId === id){ d.selectedId = null; d.done = false; }
+      d.selectedIds = d.selectedIds.filter(sid => sid !== id);
+      if(d.selectedIds.length === 0) d.done = false;
       save(); renderAll();
       return;
     }
@@ -713,8 +730,12 @@
     if(selEl){
       const ds = selEl.dataset.date, id = selEl.dataset.selectEx;
       const d = ensureDay(ds);
-      d.selectedId = (d.selectedId === id) ? null : id;
-      if(!d.selectedId) d.done = false;
+      if(d.selectedIds.includes(id)){
+        d.selectedIds = d.selectedIds.filter(sid => sid !== id);
+      } else {
+        d.selectedIds.push(id);
+      }
+      if(d.selectedIds.length === 0) d.done = false;
       save(); renderAll();
       return;
     }
