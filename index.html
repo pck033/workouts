@@ -106,6 +106,49 @@
   .stat-tag.best b{ color: var(--ink-red-bright); }
   .stat-tag.rate b{ color: var(--ink-dark); }
 
+  .sync-panel{
+    margin: 0 0 22px 0;
+    padding: 12px 14px;
+    border: 1px solid var(--paper-line-strong);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+  }
+  .sync-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    font-size:10.5px;
+    color: var(--muted);
+  }
+  .sync-label{ letter-spacing:0.03em; }
+  .sync-panel input[type="text"]{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    padding:6px 8px;
+    border: 1px solid var(--paper-line-strong);
+    border-radius:3px;
+    background: #081420;
+    color: var(--ink-dark);
+    min-width:160px;
+    flex:1;
+  }
+  .sync-panel input[type="text"]:focus{ outline: 1px solid var(--ink-blue); }
+  .sync-code{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color: var(--ink-blue);
+    background: rgba(234,157,43,0.08);
+    padding:3px 8px;
+    border-radius:3px;
+    letter-spacing:0.02em;
+  }
+  .sync-status{ font-size:10px; }
+  .sync-status.ok{ color: var(--ink-blue); }
+  .sync-status.err{ color: var(--ink-red-bright); }
+  .sync-status.not-configured{ color: var(--muted); }
+  .sync-hint{ font-size:9.5px; color: var(--muted); margin-top:6px; }
+
   .top-actions{
     display:flex;
     align-items:center;
@@ -528,6 +571,7 @@
   </header>
 
   <div class="stats-row" id="statsRow"></div>
+  <div class="sync-panel" id="syncPanel"></div>
   <div class="top-actions">
     <button class="jump-btn" id="jumpToday">jump to this week ↓</button>
     <div class="shift-panel">
@@ -551,6 +595,7 @@
 </div>
 
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function(){
   const STORAGE_KEY = 'trainingLogWeekly';
@@ -558,6 +603,31 @@
   const RANGE_END   = '2026-10-31';
   const CARDIO_GOAL = 150;
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  // ---- Cross-device sync (Supabase) ----
+  // 1. Create a free project at https://supabase.com
+  // 2. In the SQL editor, run the table-creation SQL from README.md
+  // 3. Paste your Project URL and anon public key below, then redeploy
+  const SUPABASE_URL = 'https://uikricmnhmumffxjiwbw.supabase.co/rest/v1/';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVpa3JpY21uaG11bWZmeGppd2J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTU0NTksImV4cCI6MjEwMzQzMTQ1OX0.k_QaKjLH0k1ds_0v2gMiY04k8C1XOipnCbX_Diis5Ww';
+  const SYNC_TABLE = 'training_log';
+
+  let sb = null;
+  if(SUPABASE_URL.indexOf('YOUR_SUPABASE_URL') === -1 &&
+     SUPABASE_ANON_KEY.indexOf('YOUR_SUPABASE_ANON_KEY') === -1 &&
+     window.supabase){
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+
+  // ---- Sync state (declared before data load — migration below can trigger a save) ----
+  function loadSyncKey(){
+    try{ return localStorage.getItem('trainingLogSyncKey') || null; }catch(e){ return null; }
+  }
+  function saveSyncKeyLocal(key){ localStorage.setItem('trainingLogSyncKey', key); }
+  function clearSyncKeyLocal(){ localStorage.removeItem('trainingLogSyncKey'); }
+  let syncKey = loadSyncKey();
+  let syncStatus = 'idle'; // idle | syncing | synced | error | not-configured
+  let syncDebounceTimer = null;
 
   function loadState(){
     try{
@@ -576,6 +646,7 @@
     state.days = data;
     state.videoTags = videoTags;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    scheduleSync();
   }
 
   let state = loadState();
@@ -585,6 +656,109 @@
   migrateVideoTags();
   let openFormDate = null; // which day's add-form is currently open
   let editingClip = null; // "date#exerciseId" of the clip currently in its edit form, or null
+
+  async function pullRemote(key){
+    const { data: rows, error } = await sb.from(SYNC_TABLE).select('payload').eq('sync_key', key).maybeSingle();
+    if(error) throw error;
+    return rows ? rows.payload : null;
+  }
+  async function pushRemote(key, payload){
+    const { error } = await sb.from(SYNC_TABLE).upsert(
+      { sync_key: key, payload: payload, updated_at: new Date().toISOString() },
+      { onConflict: 'sync_key' }
+    );
+    if(error) throw error;
+  }
+
+  function scheduleSync(){
+    if(!syncKey || !sb) return;
+    syncStatus = 'syncing';
+    renderSyncPanel();
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(function(){
+      pushRemote(syncKey, { days: data, videoTags: videoTags })
+        .then(function(){ syncStatus = 'synced'; renderSyncPanel(); })
+        .catch(function(err){ console.error(err); syncStatus = 'error'; renderSyncPanel(); });
+    }, 600);
+  }
+
+  function connectSync(rawKey){
+    const key = (rawKey || '').trim();
+    if(!key){ alert('enter a sync code'); return; }
+    if(!sb){ alert('sync backend is not configured yet — see README.md'); return; }
+    syncStatus = 'syncing';
+    renderSyncPanel();
+    pullRemote(key).then(function(remote){
+      if(remote){
+        data = remote.days || {};
+        videoTags = remote.videoTags || {};
+        migrateSelection();
+        migrateVideoTags();
+        syncKey = key;
+        saveSyncKeyLocal(key);
+        state.days = data; state.videoTags = videoTags;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        syncStatus = 'synced';
+        renderAll();
+        renderSyncPanel();
+      } else {
+        syncKey = key;
+        saveSyncKeyLocal(key);
+        return pushRemote(key, { days: data, videoTags: videoTags }).then(function(){
+          syncStatus = 'synced';
+          renderSyncPanel();
+        });
+      }
+    }).catch(function(err){
+      console.error(err);
+      syncStatus = 'error';
+      renderSyncPanel();
+      alert('could not reach the sync backend — check the code and your connection');
+    });
+  }
+
+  function disconnectSync(){
+    syncKey = null;
+    clearSyncKeyLocal();
+    syncStatus = 'idle';
+    renderSyncPanel();
+  }
+
+  function renderSyncPanel(){
+    const el = document.getElementById('syncPanel');
+    if(!el) return;
+    if(!sb){
+      el.innerHTML = `
+        <div class="sync-row">
+          <span class="sync-label">cross-device sync:</span>
+          <span class="sync-status not-configured">not set up — see README.md</span>
+        </div>`;
+      return;
+    }
+    if(!syncKey){
+      el.innerHTML = `
+        <div class="sync-row">
+          <span class="sync-label">sync across devices:</span>
+          <input type="text" id="syncKeyInput" placeholder="pick or paste a sync code">
+          <button class="ghost-btn" id="connectSyncBtn">connect</button>
+        </div>
+        <div class="sync-hint">new code = starts a fresh synced log here. existing code from another device = pulls that log down here.</div>`;
+      document.getElementById('connectSyncBtn').addEventListener('click', function(){
+        connectSync(document.getElementById('syncKeyInput').value);
+      });
+    } else {
+      const labels = { syncing:'syncing…', synced:'synced ✓', error:'sync error — retrying on next change' };
+      const cls = syncStatus === 'error' ? 'err' : (syncStatus === 'synced' ? 'ok' : '');
+      el.innerHTML = `
+        <div class="sync-row">
+          <span class="sync-label">synced with code:</span>
+          <code class="sync-code">${escapeHtml(syncKey)}</code>
+          <span class="sync-status ${cls}">${labels[syncStatus] || syncStatus}</span>
+          <button class="ghost-btn" id="disconnectSyncBtn">disconnect</button>
+        </div>`;
+      document.getElementById('disconnectSyncBtn').addEventListener('click', disconnectSync);
+    }
+  }
 
   function loadCollapsed(){
     try{
@@ -1105,6 +1279,35 @@
   });
 
   renderAll();
+  renderSyncPanel();
+
+  // if this device already has a sync code, pull the freshest copy on load
+  if(syncKey && sb){
+    syncStatus = 'syncing';
+    renderSyncPanel();
+    pullRemote(syncKey).then(function(remote){
+      if(remote){
+        data = remote.days || {};
+        videoTags = remote.videoTags || {};
+        migrateSelection();
+        migrateVideoTags();
+        state.days = data; state.videoTags = videoTags;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        syncStatus = 'synced';
+        renderAll();
+      } else {
+        // code set locally but no row yet remotely — seed it
+        return pushRemote(syncKey, { days: data, videoTags: videoTags }).then(function(){
+          syncStatus = 'synced';
+        });
+      }
+    }).catch(function(err){
+      console.error(err);
+      syncStatus = 'error';
+    }).then(function(){
+      renderSyncPanel();
+    });
+  }
 })();
 </script>
 
