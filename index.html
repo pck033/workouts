@@ -876,17 +876,17 @@
       if(d && d.done) doneDays++;
     });
 
-    // current streak: consecutive done days ending at the most recent day you
-    // actually marked done (today or earlier) — an un-checked today doesn't
-    // zero it out, it just means the streak hasn't grown yet.
+    // current streak: consecutive done days counting back from today. Only
+    // *today* gets a grace period for not being done yet (the day isn't over) —
+    // any earlier day that's already passed and wasn't marked done breaks the
+    // streak, same as a real habit tracker.
     const past = allDates.filter(ds => ds <= todayStr()).slice().reverse(); // most recent first
     let streak = 0;
-    const startIdx = past.findIndex(ds => data[ds] && data[ds].done);
-    if(startIdx !== -1){
-      for(let i = startIdx; i < past.length; i++){
-        if(data[past[i]] && data[past[i]].done) streak++;
-        else break;
-      }
+    const todayIsDone = past.length > 0 && data[past[0]] && data[past[0]].done;
+    const startIdx = todayIsDone ? 0 : 1; // skip an unfinished "today" only
+    for(let i = startIdx; i < past.length; i++){
+      if(data[past[i]] && data[past[i]].done) streak++;
+      else break;
     }
 
     // best streak: the longest unbroken run of done days anywhere in the range
