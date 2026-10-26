@@ -566,8 +566,8 @@
 <div class="wrap">
   <header class="page-head">
     <div class="eyebrow">Training Log</div>
-    <h1>Aug 23 — Dec 26, 2026</h1>
-    <div class="subtitle">18 weeks · paste a clip, pick the one you're doing, check it off</div>
+    <h1>Aug 23, 2026 — Jan 2, 2027</h1>
+    <div class="subtitle">19 weeks · paste a clip, pick the one you're doing, check it off</div>
   </header>
 
   <div class="stats-row" id="statsRow"></div>
@@ -600,7 +600,7 @@
 (function(){
   const STORAGE_KEY = 'trainingLogWeekly';
   const RANGE_START = '2026-08-23';
-  const RANGE_END   = '2026-12-26';
+  const RANGE_END   = '2027-01-02';
   const CARDIO_GOAL = 150;
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -1218,7 +1218,7 @@
     // days before the chosen pivot are untouched
     allDates.forEach(ds => { if(ds < pivot && data[ds]) newData[ds] = data[ds]; });
     // pivot and every day after it move forward by n; anything that lands
-    // past Dec 26 falls out of the tracked range and is dropped
+    // past Jan 2 falls out of the tracked range and is dropped
     allDates.forEach(ds => {
       if(ds >= pivot && data[ds]){
         const shifted = addDaysStr(ds, n);
@@ -1241,7 +1241,7 @@
     const pivot = dateInput.value;
     const n = parseInt(daysInput.value, 10);
     if(!pivot || pivot < RANGE_START || pivot > RANGE_END){
-      alert('pick a valid date within Aug 23 – Dec 26, 2026');
+      alert('pick a valid date within Aug 23, 2026 – Jan 2, 2027');
       return;
     }
     if(!n || n < 1){
@@ -1254,7 +1254,7 @@
     const overflow = affected.filter(ds => addDaysStr(ds, n) > RANGE_END);
     let msg = `Shift ${pivot} and every day after it forward by ${n} day${n===1?'':'s'}?`;
     if(overflow.length > 0){
-      msg += `\n\n${overflow.length} day(s) with data would land after Dec 26 and be lost.`;
+      msg += `\n\n${overflow.length} day(s) with data would land after Jan 2 and be lost.`;
     }
     if(!window.confirm(msg)) return;
     shiftFutureDays(pivot, n);
