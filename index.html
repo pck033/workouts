@@ -204,6 +204,18 @@
   .shift-panel #shiftBtn{ font-size:11px; padding: 7px 12px; }
 
   .week-section{ margin-bottom: 40px; }
+  .month-group{ margin-bottom: 16px; }
+  .month-group > summary{
+    list-style:none; cursor:pointer;
+    display:flex; align-items:center; gap:12px;
+    padding: 10px 0; border-bottom: 1px solid var(--paper-line-strong);
+  }
+  .month-group > summary::-webkit-details-marker{ display:none; }
+  .month-group > summary .month-caret{ font-family:'JetBrains Mono', monospace; font-size:12px; color: var(--muted); width:20px; text-align:center; }
+  .month-group[open] > summary .month-caret{ transform: rotate(90deg); }
+  .month-group > summary h2{ font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:15px; margin:0; color: var(--ink-dark); }
+  .month-group > summary .month-stat{ font-size:10.5px; color: var(--muted); letter-spacing:0.03em; }
+  .month-group[open] > .month-body{ padding-top: 16px; }
   .week-head{
     display:flex;
     align-items:center;
@@ -770,6 +782,13 @@
     localStorage.setItem('trainingLogCollapsedWeeks', JSON.stringify([...collapsedWeeks]));
   }
   let collapsedWeeks = loadCollapsed(); // Set of week-index strings
+  let openMonths = (() => { try { return new Set(JSON.parse(localStorage.getItem('trainingLogOpenMonths') || '[]')); } catch(e){ return new Set(); } })();
+  document.addEventListener('toggle', e => {
+    const el = e.target;
+    if(!el.classList || !el.classList.contains('month-group')) return;
+    if(el.open) openMonths.add(el.dataset.month); else openMonths.delete(el.dataset.month);
+    try { localStorage.setItem('trainingLogOpenMonths', JSON.stringify([...openMonths])); } catch(err){}
+  }, true);
 
   function ensureDay(dateStr){
     if(!data[dateStr]) data[dateStr] = { exercises: [], selectedIds: [], done: false, cardioMins: 0 };
@@ -1009,7 +1028,7 @@
 
   function renderWeeks(){
     const container = document.getElementById('weeksContainer');
-    container.innerHTML = WEEKS.map((week, wi) => {
+    const sectionHtml = (week, wi) => {
       const wiStr = String(wi);
       const collapsed = collapsedWeeks.has(wiStr);
       const doneCount = week.filter(ds => data[ds] && data[ds].done).length;
@@ -1031,6 +1050,33 @@
             ${week.map(renderDayCell).join('')}
           </div>
         </section>`;
+    };
+    // a week belongs to the month holding most of its days (= its middle day);
+    // months whose last week has fully passed fold into one collapsible group
+    const today = todayStr();
+    const groups = [];
+    WEEKS.forEach((week, wi) => {
+      const mk = week[3].slice(0,7);
+      const g = groups[groups.length-1];
+      if(g && g.mk === mk) g.items.push(wi); else groups.push({ mk, items:[wi] });
+    });
+    container.innerHTML = groups.map(g => {
+      const lastDay = WEEKS[g.items[g.items.length-1]][6];
+      const inner = g.items.map(wi => sectionHtml(WEEKS[wi], wi)).join('');
+      if(lastDay >= today) return inner;
+      const days = g.items.flatMap(wi => WEEKS[wi]);
+      const done = days.filter(ds => data[ds] && data[ds].done).length;
+      const cardio = days.reduce((s, ds) => s + ((data[ds] && data[ds].cardioMins) || 0), 0);
+      const label = toDate(g.mk + '-01').toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      return `
+        <details class="month-group" data-month="${g.mk}" ${openMonths.has(g.mk)?'open':''}>
+          <summary>
+            <span class="month-caret">▸</span>
+            <h2>${label}</h2>
+            <span class="month-stat">${g.items.length} weeks · ${done}/${days.length} done · cardio ${cardio} min</span>
+          </summary>
+          <div class="month-body">${inner}</div>
+        </details>`;
     }).join('');
   }
 
