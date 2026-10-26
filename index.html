@@ -913,6 +913,18 @@
     const dt = toDate(dateStr);
     const isToday = dateStr === todayStr();
     const items = d.exercises.map(ex => {
+      if(!ex.url && ex.name){
+        const isSelN = d.selectedIds.includes(ex.id);
+        return `
+        <div class="ex-item">
+          <div class="tag-row">
+            <button class="ex-tag ${isSelN?'selected':''}" data-select-ex="${ex.id}" data-date="${dateStr}">
+              ${isSelN?'✓ ':''}${escapeHtml(ex.name)}
+            </button>
+            <button class="edit-tag-btn" data-del-ex="${ex.id}" data-date="${dateStr}" title="remove">✕</button>
+          </div>
+        </div>`;
+      }
       const vid = extractYouTubeId(ex.url);
       const isSel = d.selectedIds.includes(ex.id);
       const currentName = (vid && videoTags[vid]) || 'exercise';
@@ -1119,8 +1131,16 @@
       const url = formEl.querySelector('[data-field="url"]').value.trim();
       const errEl = formEl.querySelector('[data-err]');
       const vid = extractYouTubeId(url);
+      if(!url && titleInput.value.trim()){
+        // name-only entry (e.g. a body part to work) — no clip attached
+        const dn = ensureDay(ds);
+        dn.exercises.push({ id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), url: '', name: titleInput.value.trim() });
+        openFormDate = null;
+        save(); renderAll();
+        return;
+      }
       if(!url || !vid){
-        errEl.textContent = "paste a valid YouTube link";
+        errEl.textContent = "paste a valid YouTube link, or just a name";
         return;
       }
       // one name per clip: if this video already has a registered tag, keep
