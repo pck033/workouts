@@ -1358,6 +1358,13 @@
     ['HG7_XInTExo','JwX_8JAve6w'], ['dsEfSsrgUQw','Uz0av3-XX4I'], ['7HFt7mBHNl4','5-QWUcbN7vY'],
     ['dsEfSsrgUQw','qOkfr6xOylM'], ['7HFt7mBHNl4','Uz0av3-XX4I'], ['HG7_XInTExo','JwX_8JAve6w']
   ];
+  const FRIEZA_PARTS = {
+    1:'Chest + Shoulders', 2:'Back + Biceps & Forearms', 3:'Legs', 4:'Chest + Triceps', 5:'Back + Biceps & Forearms', 6:'Legs',
+    8:'Chest + Shoulders', 9:'Back + Biceps & Forearms', 10:'Legs', 12:'Legs', 13:'Chest + Triceps', 14:'Back + Biceps & Forearms',
+    15:'Chest', 16:'Back + Shoulders', 17:'Legs', 19:'Back', 20:'Chest + Shoulders', 21:'Legs', 22:'Back + Biceps & Forearms',
+    23:'Chest + Triceps', 25:'Legs', 26:'Chest + Shoulders', 27:'Back + Biceps & Forearms', 28:'Chest + Triceps',
+    29:'Back + Shoulders', 30:'Legs'
+  };
   const friezaFrom = n => FRIEZA.map((vids, i) => ({ n: i+1, vids })).filter(x => x.vids && x.n >= n);
   const PLANS = [
     { id: 'frieza-trial-2026-11-13', start: '2026-11-13', end: '2026-11-21', friezaDow: [0,1,3,5], absDow: [2,4,6], frieza: friezaFrom(1) },
@@ -1478,7 +1485,12 @@
       const d = data[ds];
       if(!d || !d.exercises) continue;
       for(const ex of d.exercises){
-        if(!ex.autoPart || ex.partV === 2) continue;
+        if(!ex.autoPart || ex.partV === 3) continue;
+        if(FRIEZA_PARTS[ex.friezaDay]){
+          ex.name = FRIEZA_PARTS[ex.friezaDay]; ex.partResolved = true; ex.partV = 3; changed = true;
+          continue;
+        }
+        if(ex.partV === 2) continue;
         const titles = await Promise.all(ex.autoPart.map(fetchTitle));
         if(titles.some(t => !t)) continue; // retry on next load
         // drop Frieza abs/core clips from the day; body part = the rest
@@ -1571,7 +1583,7 @@
   ].map(([title, secs, parts]) => ({ title, secs, parts }));
   // a Frieza body part -> which clip parts count as a match
   const PART_GROUP = {
-    'Arms':['Arms','Biceps','Triceps','Forearms'], 'Legs':['Legs','Glutes'], 'Quads':['Legs'], 'Hamstrings':['Legs','Glutes'],
+    'Arms':['Arms','Biceps','Triceps','Forearms'], 'Biceps & Forearms':['Biceps','Forearms'], 'Legs':['Legs','Glutes'], 'Quads':['Legs'], 'Hamstrings':['Legs','Glutes'],
     'Calves':['Legs'], 'Glutes':['Glutes','Legs'], 'Lower Body':['Legs','Glutes'], 'Upper Body':['Chest','Back','Shoulders'],
     'Push':['Chest','Shoulders','Triceps'], 'Pull':['Back','Biceps'], 'Full Body':['Chest','Back','Legs','Shoulders']
   };
@@ -1651,7 +1663,7 @@
         });
       });
 
-      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV7));
+      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV >= 2 && !x.fillV8));
       const keyOf = x => x.url ? extractYouTubeId(x.url) : (x.catTitle ? normT(x.catTitle) : null);
       const lastUsed = {};
       // only days NOT being refilled count as "used" — old picks on days we rebuild must not skew the rotation
@@ -1662,7 +1674,7 @@
       }));
 
       days.forEach(ds => {
-        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV7);
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV8);
         const want = ex.name.split(' + ').map(s => s.trim()).filter(p => p && p !== 'Abs' && p !== 'Core');
         // clear the day's clips (Frieza clips / earlier picks); keep the body-part name
         const dropIds = d.exercises.filter(x => x !== ex && !x.autoPart).map(x => x.id);
@@ -1681,7 +1693,6 @@
           const c = pool[0];
           picked.push(c);
           lastUsed[normT(c.title)] = ds;
-          want.forEach(w => { if(c.parts.some(p => (PART_GROUP[w] || [w]).includes(p))) covered.add(w); });
           const label = c.title.split('|')[0].trim().slice(0, 60);
           const v = byTitle[normT(c.title)];
           if(v){
@@ -1717,7 +1728,7 @@
         } else {
           d.exercises.push({ id: newId(), url: '', name: '▶ Cooldown Stretch (' + fmtLen(COOLDOWN.secs) + ')', catTitle: COOLDOWN.title, catLabel: 'Cooldown' });
         }
-        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true; ex.fillV7 = true;
+        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true; ex.fillV7 = true; ex.fillV8 = true;
         changed = true;
       });
       if(changed){ save(); renderAll(); }
