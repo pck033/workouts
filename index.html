@@ -1541,45 +1541,97 @@
     return null;
   }
 
+  // body-part clips in the "Midas Build & Burn" playlist (from PCK's screenshot, Nov 13 2026)
+  const CATALOG = [
+    ['15-Min Dumbbell LEGS Finisher Workout + Cooldown Stretch! | Build & Burn Ep. 33', 1243, ['Legs']],
+    ['15 MIN Dumbbell Only Legs Workout At Home', 961, ['Legs']],
+    ['10 MIN Dumbbell Legs & Glutes Finisher', 629, ['Legs','Glutes']],
+    ['15 MIN Dumbbell Arms & Shoulders Workout | No Repeats', 908, ['Arms','Biceps','Triceps','Shoulders']],
+    ['10 MIN Lightweight Dumbbell Triceps | No Bench, No Repeats', 626, ['Triceps']],
+    ['10 MIN Dumbbell Triceps Workout (No Bench)', 640, ['Triceps']],
+    ['10 MIN Dumbbell Biceps & Forearm Workout', 649, ['Biceps','Forearms']],
+    ['10 Minute Dumbbell Forearms Finisher Workout | Build Muscle & Burn Fat 20', 670, ['Forearms']],
+    ['9 MIN Dumbbell Biceps & Forearms Finisher', 612, ['Biceps','Forearms']],
+    ['10-Minute Aesthetic Biceps & Forearms Workout | Build & Burn Ep. 31', 717, ['Biceps','Forearms']],
+    ['10-Min Lightweight Dumbbell Biceps & Forearms | No Bench, No Repeats', 626, ['Biceps','Forearms']],
+    ['10 MIN Dumbbell Back & Biceps Finisher', 691, ['Back','Biceps']],
+    ['15 MIN Dumbbell Back Workout | No Bench', 971, ['Back']],
+    ['10 MIN Lightweight Dumbbell Upper Back & Rear Delts | No Repeats', 626, ['Back','Shoulders']],
+    ['15-Min Lightweight Dumbbell Chest Workout | No Bench + Strict Reps', 909, ['Chest']],
+    ['15 MIN Dumbbell Chest Workout (No Bench)', 998, ['Chest']],
+    ['10 MIN Dumbbell Shoulders Workout (No Bench)', 659, ['Shoulders']],
+    ['12 MIN Dumbbell Shoulder Finisher | Front, Side & Rear Delts', 831, ['Shoulders']]
+  ].map(([title, secs, parts]) => ({ title, secs, parts }));
+  // a Frieza body part -> which clip parts count as a match
+  const PART_GROUP = {
+    'Arms':['Arms','Biceps','Triceps','Forearms'], 'Legs':['Legs','Glutes'], 'Quads':['Legs'], 'Hamstrings':['Legs','Glutes'],
+    'Calves':['Legs'], 'Glutes':['Glutes','Legs'], 'Lower Body':['Legs','Glutes'], 'Upper Body':['Chest','Back','Shoulders'],
+    'Push':['Chest','Shoulders','Triceps'], 'Pull':['Back','Biceps'], 'Full Body':['Chest','Back','Legs','Shoulders']
+  };
+  const normT = t => (t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const fmtLen = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+
   let filling = false;
   async function fillFriezaDays(){
     if(filling) return; filling = true;
     try{
-      const days = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && data[ds] && data[ds].exercises &&
-        data[ds].exercises.some(x => x.autoPart && x.partV === 2 && !x.fillV3)).sort();
-      if(!days.length) return;
       const pl = await loadPlaylist();
-      if(!pl) return; // retry on next load
-      const isAbsPart = p => p === 'Abs' || p === 'Core';
-      const vids = pl.map(x => ({ ...x, parts: partsFromTitle(x.title) }))
-        .filter(x => !(x.parts.length && x.parts.every(isAbsPart)));
-      // last date each playlist clip was used, for rotation
-      const lastUsed = {};
-      Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds)).sort().forEach(ds => {
-        (data[ds].exercises || []).forEach(x => { const v = x.url && extractYouTubeId(x.url); if(v) lastUsed[v] = ds; });
+      const byTitle = {};
+      (pl || []).forEach(x => { byTitle[normT(x.title)] = x.vid; });
+      let changed = false;
+      const allDays = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds)).sort();
+
+      // upgrade name-only clip placeholders to real links once the playlist loads
+      if(pl) allDays.forEach(ds => {
+        (data[ds].exercises || []).forEach(x => {
+          const v = x.catTitle && byTitle[normT(x.catTitle)];
+          if(v){ x.url = ytUrl(v); delete x.name; delete x.catTitle;
+            if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = x.catLabel || 'exercise'; delete x.catLabel; changed = true; }
+        });
       });
+
+      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV4));
+      const keyOf = x => x.url ? extractYouTubeId(x.url) : (x.catTitle ? normT(x.catTitle) : null);
+      const lastUsed = {};
+      allDays.forEach(ds => (data[ds].exercises || []).forEach(x => {
+        const k = keyOf(x); if(k) lastUsed[k] = ds;
+        if(x.url){ const c = CATALOG.find(c => byTitle[normT(c.title)] === extractYouTubeId(x.url)); if(c) lastUsed[normT(c.title)] = ds; }
+      }));
+
       days.forEach(ds => {
-        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV3);
-        const want = ex.name.split(' + ').map(s => s.trim()).filter(Boolean);
-        // remove the Frieza clips themselves; keep the body-part name
-        const dropIds = d.exercises.filter(x => x.url).map(x => x.id);
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV4);
+        const want = ex.name.split(' + ').map(s => s.trim()).filter(p => p && p !== 'Abs' && p !== 'Core');
+        // clear the day's clips (Frieza clips / earlier picks); keep the body-part name
+        const dropIds = d.exercises.filter(x => x !== ex && !x.autoPart).map(x => x.id);
         d.exercises = d.exercises.filter(x => !dropIds.includes(x.id));
         d.selectedIds = (d.selectedIds || []).filter(id => !dropIds.includes(id));
-        const score = v => v.parts.filter(p => want.includes(p)).length;
-        let pool = vids.filter(v => score(v) > 0);
-        if(!pool.length) pool = vids.filter(v => v.parts.includes('Full Body'));
-        if(!pool.length) pool = vids;
-        pool.sort((a, b) => ((lastUsed[a.vid] || '') < (lastUsed[b.vid] || '') ? -1 : (lastUsed[a.vid] || '') > (lastUsed[b.vid] || '') ? 1 : 0)
-          || score(b) - score(a) || pl.findIndex(x => x.vid === a.vid) - pl.findIndex(x => x.vid === b.vid));
-        const pick = pool[0];
-        if(pick){
-          d.exercises.push({ id: newId(), url: ytUrl(pick.vid) });
-          lastUsed[pick.vid] = ds;
-          if(!videoTags[pick.vid] || videoTags[pick.vid] === 'exercise') videoTags[pick.vid] = pick.title.split('|')[0].trim().slice(0, 60);
-        }
-        ex.fillV3 = true;
+        const covered = new Set(), picked = [];
+        want.forEach(part => {
+          if(covered.has(part)) return;
+          const group = PART_GROUP[part] || [part];
+          const pool = CATALOG.filter(c => !picked.includes(c) && c.parts.some(p => group.includes(p)));
+          if(!pool.length) return;
+          const lu = c => lastUsed[normT(c.title)] || '';
+          pool.sort((a, b) => (lu(a) < lu(b) ? -1 : lu(a) > lu(b) ? 1 : 0)
+            || b.parts.filter(p => want.includes(p)).length - a.parts.filter(p => want.includes(p)).length
+            || CATALOG.indexOf(a) - CATALOG.indexOf(b));
+          const c = pool[0];
+          picked.push(c);
+          lastUsed[normT(c.title)] = ds;
+          want.forEach(w => { if(c.parts.some(p => (PART_GROUP[w] || [w]).includes(p))) covered.add(w); });
+          const label = c.title.split('|')[0].trim().slice(0, 60);
+          const v = byTitle[normT(c.title)];
+          if(v){
+            d.exercises.push({ id: newId(), url: ytUrl(v) });
+            if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = label;
+          } else {
+            d.exercises.push({ id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label });
+          }
+        });
+        ex.fillV3 = true; ex.fillV4 = true;
+        changed = true;
       });
-      save(); renderAll();
+      if(changed){ save(); renderAll(); }
     } finally { filling = false; }
   }
 
