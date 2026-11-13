@@ -1468,14 +1468,24 @@
       const d = data[ds];
       if(!d || !d.exercises) continue;
       for(const ex of d.exercises){
-        if(!ex.autoPart || ex.partResolved) continue;
+        if(!ex.autoPart || ex.partV === 2) continue;
         const titles = await Promise.all(ex.autoPart.map(fetchTitle));
         if(titles.some(t => !t)) continue; // retry on next load
+        // drop Frieza abs/core clips from the day; body part = the rest
+        const isAbsPart = p => p === 'Abs' || p === 'Core';
+        const absClip = titles.map(t => { const ps = partsFromTitle(t); return ps.length > 0 && ps.every(isAbsPart) || /six ?pack/i.test(t); });
+        if(absClip.some(x => !x)){
+          const dropVids = ex.autoPart.filter((v, i) => absClip[i]);
+          const dropIds = d.exercises.filter(x => x.url && dropVids.includes(extractYouTubeId(x.url))).map(x => x.id);
+          d.exercises = d.exercises.filter(x => !dropIds.includes(x.id));
+          d.selectedIds = (d.selectedIds || []).filter(id => !dropIds.includes(id));
+        }
         let parts = [];
-        titles.forEach(t => partsFromTitle(t).forEach(p => { if(!parts.includes(p)) parts.push(p); }));
-        if(!parts.length) parts = [titles[0].split('|')[0].trim()];
+        titles.forEach((t, i) => { if(!absClip[i]) partsFromTitle(t).filter(p => !isAbsPart(p)).forEach(p => { if(!parts.includes(p)) parts.push(p); }); });
+        if(!parts.length){ const i = absClip.indexOf(false); parts = [titles[i < 0 ? 0 : i].split('|')[0].trim()]; }
         ex.name = parts.join(' + ');
         ex.partResolved = true;
+        ex.partV = 2;
         ex.autoPart.forEach((v, i) => {
           if(!videoTags[v] || /^Frieza D\d$/.test(videoTags[v]) || videoTags[v] === 'exercise'){
             videoTags[v] = titles[i].split('|')[0].trim().slice(0, 60);
