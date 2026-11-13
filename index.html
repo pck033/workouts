@@ -713,6 +713,7 @@
         syncStatus = 'synced';
         renderAll();
         renderSyncPanel();
+        if(!applyPlan()) resolveBodyParts();
       } else {
         syncKey = key;
         saveSyncKeyLocal(key);
@@ -1344,8 +1345,151 @@
     e.target.value = '';
   });
 
+  // ---- One-time plan: Frieza (Sun/Mon/Wed/Fri) + abs/core (Tue/Thu/Sat), 1-week trial ----
+  const PLAN = {
+    id: 'frieza-trial-2026-11-13',
+    start: '2026-11-13',           // wipe exercises from this date onward
+    end:   '2026-11-21',           // fill through this date
+    friezaDow: [0,1,3,5],          // Sun Mon Wed Fri
+    absDow: [2,4,6],               // Tue Thu Sat
+    // Midas Movement "Frieza" week 1, days 1-6 (day 7 = rest)
+    frieza: [
+      ['dsEfSsrgUQw','Uz0av3-XX4I'],
+      ['7HFt7mBHNl4','5-QWUcbN7vY'],
+      ['HG7_XInTExo','JwX_8JAve6w'],
+      ['dsEfSsrgUQw','qOkfr6xOylM'],
+      ['7HFt7mBHNl4','5-QWUcbN7vY'],
+      ['HG7_XInTExo','JwX_8JAve6w']
+    ]
+  };
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  const ytUrl = vid => 'https://www.youtube.com/watch?v=' + vid;
+
+  function applyPlan(){
+    const startDay = data[PLAN.start];
+    if(startDay && startDay.planApplied === PLAN.id) return false;
+    const dowOf = ds => toDate(ds).getDay();
+    const urlsOf = d => (d && d.exercises ? d.exercises.filter(x => x.url).map(x => x.url) : []);
+
+    // abs/core history (Tue/Thu/Sat before start): 1st clip = abs, 2nd = core
+    const absSeq = [], coreSeq = [], absWithCore = new Set();
+    let lastAbs = null, lastCore = null;
+    Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && ds < PLAN.start && PLAN.absDow.includes(dowOf(ds)))
+      .sort().forEach(ds => {
+        const u = urlsOf(data[ds]);
+        if(!u.length) return;
+        const a = extractYouTubeId(u[0]);
+        if(a){ if(!absSeq.includes(a)) absSeq.push(a); lastAbs = a; }
+        if(u[1]){
+          const c = extractYouTubeId(u[1]);
+          if(c){ if(!coreSeq.includes(c)) coreSeq.push(c); lastCore = c; if(a) absWithCore.add(a); }
+        }
+      });
+
+    // abs/core already queued on future Tue/Thu/Sat — use these first, in order
+    const queue = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && ds >= PLAN.start && PLAN.absDow.includes(dowOf(ds)))
+      .sort().map(ds => urlsOf(data[ds])).filter(u => u.length);
+
+    const nextIn = (seq, last) => seq.length ? seq[(seq.indexOf(last) + 1) % seq.length] : null;
+    function nextAbsDay(){
+      if(queue.length){
+        const u = queue.shift();
+        lastAbs = extractYouTubeId(u[0]) || lastAbs;
+        if(u[1]) lastCore = extractYouTubeId(u[1]) || lastCore;
+        return u;
+      }
+      const a = nextIn(absSeq, lastAbs);
+      if(!a) return [];
+      lastAbs = a;
+      const out = [ytUrl(a)];
+      if(absWithCore.has(a)){
+        const c = nextIn(coreSeq, lastCore);
+        if(c){ lastCore = c; out.push(ytUrl(c)); }
+      }
+      return out;
+    }
+
+    // wipe from start onward (keep done / cardio minutes)
+    WEEKS.flat().forEach(ds => {
+      if(ds >= PLAN.start && data[ds]){ data[ds].exercises = []; data[ds].selectedIds = []; }
+    });
+
+    let fi = 0;
+    WEEKS.flat().filter(ds => ds >= PLAN.start && ds <= PLAN.end).forEach(ds => {
+      const d = ensureDay(ds), dow = dowOf(ds);
+      if(PLAN.friezaDow.includes(dow) && fi < PLAN.frieza.length){
+        const vids = PLAN.frieza[fi];
+        d.exercises.push({ id: newId(), url: '', name: 'Frieza D' + (fi+1) + ' · loading body part…', autoPart: vids, friezaDay: fi+1 });
+        vids.forEach(v => {
+          d.exercises.push({ id: newId(), url: ytUrl(v) });
+          if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = 'Frieza D' + (fi+1);
+        });
+        fi++;
+      } else if(PLAN.absDow.includes(dow)){
+        nextAbsDay().forEach(u => d.exercises.push({ id: newId(), url: u }));
+      }
+    });
+    ensureDay(PLAN.start).planApplied = PLAN.id;
+    save(); renderAll();
+    resolveBodyParts();
+    return true;
+  }
+
+  // body part comes from the YouTube titles of the day's two Frieza clips
+  const PART_WORDS = ['full body','upper body','lower body','chest','back','shoulders','shoulder','delts','arms','biceps','triceps','forearms','legs','quads','hamstrings','glutes','calves','abs','core','push','pull'];
+  const titleCache = {};
+  async function fetchTitle(vid){
+    if(titleCache[vid]) return titleCache[vid];
+    const tries = [
+      'https://noembed.com/embed?url=' + encodeURIComponent(ytUrl(vid)),
+      'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(ytUrl(vid))
+    ];
+    for(const u of tries){
+      try{
+        const r = await fetch(u);
+        if(!r.ok) continue;
+        const j = await r.json();
+        if(j && j.title){ titleCache[vid] = j.title; return j.title; }
+      }catch(e){}
+    }
+    return null;
+  }
+  function partsFromTitle(t){
+    const low = t.toLowerCase(), found = [];
+    PART_WORDS.forEach(w => {
+      const i = low.search(new RegExp('\\b' + w + '\\b'));
+      if(i >= 0 && !found.some(f => f.w.includes(w) || w.includes(f.w))) found.push({ w, i });
+    });
+    return found.sort((a,b) => a.i - b.i).map(f => f.w.replace(/\b\w/g, c => c.toUpperCase()));
+  }
+  async function resolveBodyParts(){
+    let changed = false;
+    for(const ds of Object.keys(data)){
+      const d = data[ds];
+      if(!d || !d.exercises) continue;
+      for(const ex of d.exercises){
+        if(!ex.autoPart || ex.partResolved) continue;
+        const titles = await Promise.all(ex.autoPart.map(fetchTitle));
+        if(titles.some(t => !t)) continue; // retry on next load
+        let parts = [];
+        titles.forEach(t => partsFromTitle(t).forEach(p => { if(!parts.includes(p)) parts.push(p); }));
+        if(!parts.length) parts = [titles[0].split('|')[0].trim()];
+        ex.name = parts.join(' + ');
+        ex.partResolved = true;
+        ex.autoPart.forEach((v, i) => {
+          if(!videoTags[v] || /^Frieza D\d$/.test(videoTags[v]) || videoTags[v] === 'exercise'){
+            videoTags[v] = titles[i].split('|')[0].trim().slice(0, 60);
+          }
+        });
+        changed = true;
+      }
+    }
+    if(changed){ save(); renderAll(); }
+  }
+
   renderAll();
   renderSyncPanel();
+  if(!(syncKey && sb)){ if(!applyPlan()) resolveBodyParts(); }
 
   // if this device already has a sync code, pull the freshest copy on load
   if(syncKey && sb){
@@ -1361,7 +1505,9 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         syncStatus = 'synced';
         renderAll();
+        if(!applyPlan()) resolveBodyParts();
       } else {
+        applyPlan();
         // code set locally but no row yet remotely — seed it
         return pushRemote(syncKey, { days: data, videoTags: videoTags }).then(function(){
           syncStatus = 'synced';
