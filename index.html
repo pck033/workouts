@@ -1576,6 +1576,7 @@
     'Push':['Chest','Shoulders','Triceps'], 'Pull':['Back','Biceps'], 'Full Body':['Chest','Back','Legs','Shoulders']
   };
   const LEG_EXTRA = 'Kx9G58FGeNI';
+  const UPPER_WARMUP = { title: '3 MIN Upper Body Warm Up | Before Dumbbell Training', secs: 210 };
   const COOLDOWN = { title: '5 MIN Full Body Cooldown Stretch | After Your Workout', secs: 333 };
   const normT = t => (t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const fmtLen = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
@@ -1599,7 +1600,7 @@
         });
       });
 
-      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV5));
+      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV6));
       const keyOf = x => x.url ? extractYouTubeId(x.url) : (x.catTitle ? normT(x.catTitle) : null);
       const lastUsed = {};
       allDays.forEach(ds => (data[ds].exercises || []).forEach(x => {
@@ -1608,7 +1609,7 @@
       }));
 
       days.forEach(ds => {
-        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV5);
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV6);
         const want = ex.name.split(' + ').map(s => s.trim()).filter(p => p && p !== 'Abs' && p !== 'Core');
         // clear the day's clips (Frieza clips / earlier picks); keep the body-part name
         const dropIds = d.exercises.filter(x => x !== ex && !x.autoPart).map(x => x.id);
@@ -1637,11 +1638,25 @@
             d.exercises.push({ id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label });
           }
         });
-        // leg days: extra leg clip; every weight day ends with the cooldown
-        if(want.some(w => (PART_GROUP[w] || [w]).includes('Legs'))){
-          d.exercises.push({ id: newId(), url: ytUrl(LEG_EXTRA) });
-          if(!videoTags[LEG_EXTRA] || videoTags[LEG_EXTRA] === 'exercise') videoTags[LEG_EXTRA] = 'Legs (extra)';
+        // warm-ups go right after the body-part name: lower body clip on leg days, playlist upper-body warm-up on upper days
+        const groupsOf = w => PART_GROUP[w] || [w];
+        const isLower = want.some(w => groupsOf(w).some(p => p === 'Legs' || p === 'Glutes'));
+        const isUpper = want.some(w => groupsOf(w).some(p => ['Chest','Back','Shoulders','Arms','Biceps','Triceps','Forearms'].includes(p)));
+        const warm = [];
+        if(isLower){
+          warm.push({ id: newId(), url: ytUrl(LEG_EXTRA) });
+          if(!videoTags[LEG_EXTRA] || ['exercise','Legs (extra)'].includes(videoTags[LEG_EXTRA])) videoTags[LEG_EXTRA] = 'Lower Body Warm Up';
         }
+        if(isUpper){
+          const uv = byTitle[normT(UPPER_WARMUP.title)];
+          if(uv){
+            warm.push({ id: newId(), url: ytUrl(uv) });
+            if(!videoTags[uv] || videoTags[uv] === 'exercise') videoTags[uv] = 'Upper Body Warm Up';
+          } else {
+            warm.push({ id: newId(), url: '', name: '▶ Upper Body Warm Up (' + fmtLen(UPPER_WARMUP.secs) + ')', catTitle: UPPER_WARMUP.title, catLabel: 'Upper Body Warm Up' });
+          }
+        }
+        d.exercises.splice(d.exercises.indexOf(ex) + 1, 0, ...warm);
         const cv = byTitle[normT(COOLDOWN.title)];
         if(cv){
           d.exercises.push({ id: newId(), url: ytUrl(cv) });
@@ -1649,7 +1664,7 @@
         } else {
           d.exercises.push({ id: newId(), url: '', name: '▶ Cooldown Stretch (' + fmtLen(COOLDOWN.secs) + ')', catTitle: COOLDOWN.title, catLabel: 'Cooldown' });
         }
-        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true;
+        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true;
         changed = true;
       });
       if(changed){ save(); renderAll(); }
