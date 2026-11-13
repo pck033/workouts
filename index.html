@@ -1581,6 +1581,57 @@
   const normT = t => (t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const fmtLen = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 
+  // abs/core clips in the playlist (playlist order). core = 'Deep Core' + 'Standing Core'
+  const ABS_CAT = [
+    ['11 MIN Abs & Core Workout | Floor Only, No Equipment', 736, 'abs'],
+    ['11 MIN Single Dumbbell Core Workout | Stability, No Crunches', 759, 'core'],
+    ['11 MIN Standing Abs & Core Workout | No Floor Work', 719, 'core'],
+    ['20 MIN Abs & Cardio Workout You Can Do Anywhere', 1254, 'abs'],
+    ['15 MIN Abs & Cardio Workout', 896, 'abs'],
+    ['10 MIN Single Dumbbell Abs & Core Workout', 665, 'abs'],
+    ['20 MIN Abs & Cardio Workout | No Equipment & No Repeats', 1319, 'abs'],
+    ['10 Minute Core & ABs for Beginners! | No Equipment #1', 755, 'abs'],
+    ['10 MIN Beginner Abs Workout | No Planks, No Equipment', 616, 'abs']
+  ].map(([title, secs, kind]) => ({ title, secs, kind }));
+  const ABS_FROM = '2026-11-14';
+
+  // rebuild every Tue/Thu/Sat from ABS_FROM with abs clips only, continuing after the last abs clip used before
+  async function rebuildAbsDays(byTitle){
+    const marker = ensureDay(ABS_FROM);
+    if(marker.absV2) return false;
+    const dowOf = ds => toDate(ds).getDay();
+    const past = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && ds < ABS_FROM && [0,2,4,6].includes(dowOf(ds))).sort();
+    const ids = [...new Set(past.flatMap(ds => (data[ds].exercises || []).map(x => x.url && extractYouTubeId(x.url)).filter(Boolean)))];
+    const titles = await Promise.all(ids.map(fetchTitle));
+    if(ids.length && titles.every(t => !t)) return false; // titles unreachable — retry next load
+    const catOf = {};
+    ids.forEach((v, i) => {
+      const c = titles[i] && ABS_CAT.find(c => normT(c.title) === normT(titles[i]));
+      if(c){ catOf[v] = c; byTitle[normT(c.title)] = byTitle[normT(c.title)] || v; }
+    });
+    let lastA = -1, lastC = -1;
+    past.forEach(ds => (data[ds].exercises || []).forEach(x => {
+      const c = x.url && catOf[extractYouTubeId(x.url)];
+      if(c){ const i = ABS_CAT.indexOf(c); if(c.kind === 'abs') lastA = i; else lastC = i; }
+    }));
+    const absL = ABS_CAT.filter(c => c.kind === 'abs'), coreL = ABS_CAT.filter(c => c.kind === 'core');
+    let ai = lastA < 0 ? -1 : absL.indexOf(ABS_CAT[lastA]), ci = lastC < 0 ? -1 : coreL.indexOf(ABS_CAT[lastC]);
+    const entry = c => {
+      const v = byTitle[normT(c.title)], label = c.title.split('|')[0].trim().slice(0, 60);
+      if(v){ if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = label; return { id: newId(), url: ytUrl(v) }; }
+      return { id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label };
+    };
+    WEEKS.flat().filter(ds => ds >= ABS_FROM && [2,4,6].includes(dowOf(ds))).forEach(ds => {
+      const d = ensureDay(ds);
+      ai = (ai + 1) % absL.length;
+      const a = absL[ai], ex = [entry(a)];
+      if(a.secs < 900){ ci = (ci + 1) % coreL.length; ex.push(entry(coreL[ci])); }
+      d.exercises = ex; d.selectedIds = [];
+    });
+    marker.absV2 = true;
+    return true;
+  }
+
   let filling = false;
   async function fillFriezaDays(){
     if(filling) return; filling = true;
@@ -1588,11 +1639,11 @@
       const pl = await loadPlaylist();
       const byTitle = {};
       (pl || []).forEach(x => { byTitle[normT(x.title)] = x.vid; });
-      let changed = false;
+      let changed = await rebuildAbsDays(byTitle);
       const allDays = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds)).sort();
 
       // upgrade name-only clip placeholders to real links once the playlist loads
-      if(pl) allDays.forEach(ds => {
+      if(Object.keys(byTitle).length) allDays.forEach(ds => {
         (data[ds].exercises || []).forEach(x => {
           const v = x.catTitle && byTitle[normT(x.catTitle)];
           if(v){ x.url = ytUrl(v); delete x.name; delete x.catTitle;
