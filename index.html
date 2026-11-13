@@ -1651,16 +1651,18 @@
         });
       });
 
-      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV6));
+      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV7));
       const keyOf = x => x.url ? extractYouTubeId(x.url) : (x.catTitle ? normT(x.catTitle) : null);
       const lastUsed = {};
-      allDays.forEach(ds => (data[ds].exercises || []).forEach(x => {
+      // only days NOT being refilled count as "used" — old picks on days we rebuild must not skew the rotation
+      const refill = new Set(days);
+      allDays.filter(ds => !refill.has(ds)).forEach(ds => (data[ds].exercises || []).forEach(x => {
         const k = keyOf(x); if(k) lastUsed[k] = ds;
         if(x.url){ const c = CATALOG.find(c => byTitle[normT(c.title)] === extractYouTubeId(x.url)); if(c) lastUsed[normT(c.title)] = ds; }
       }));
 
       days.forEach(ds => {
-        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV6);
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV7);
         const want = ex.name.split(' + ').map(s => s.trim()).filter(p => p && p !== 'Abs' && p !== 'Core');
         // clear the day's clips (Frieza clips / earlier picks); keep the body-part name
         const dropIds = d.exercises.filter(x => x !== ex && !x.autoPart).map(x => x.id);
@@ -1715,7 +1717,7 @@
         } else {
           d.exercises.push({ id: newId(), url: '', name: '▶ Cooldown Stretch (' + fmtLen(COOLDOWN.secs) + ')', catTitle: COOLDOWN.title, catLabel: 'Cooldown' });
         }
-        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true;
+        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true; ex.fillV7 = true;
         changed = true;
       });
       if(changed){ save(); renderAll(); }
