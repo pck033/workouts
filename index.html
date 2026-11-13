@@ -1436,7 +1436,7 @@
   }
 
   // body part comes from the YouTube titles of the day's two Frieza clips
-  const PART_WORDS = ['full body','upper body','lower body','chest','back','shoulders','shoulder','delts','arms','biceps','triceps','forearms','legs','quads','hamstrings','glutes','calves','abs','core','push','pull'];
+  const PART_WORDS = ['full body','upper body','lower body','chest','back','shoulders','shoulder','delts','arms','biceps','triceps','forearms','legs','leg','arm','quads','hamstrings','glutes','calves','abs','core','push','pull'];
   const titleCache = {};
   async function fetchTitle(vid){
     if(titleCache[vid]) return titleCache[vid];
@@ -1460,7 +1460,10 @@
       const i = low.search(new RegExp('\\b' + w + '\\b'));
       if(i >= 0 && !found.some(f => f.w.includes(w) || w.includes(f.w))) found.push({ w, i });
     });
-    return found.sort((a,b) => a.i - b.i).map(f => f.w.replace(/\b\w/g, c => c.toUpperCase()));
+    const norm = { leg:'legs', arm:'arms', shoulder:'shoulders', delts:'shoulders' };
+    const out = [];
+    found.sort((a,b) => a.i - b.i).forEach(f => { const w = (norm[f.w] || f.w).replace(/\b\w/g, c => c.toUpperCase()); if(!out.includes(w)) out.push(w); });
+    return out;
   }
   async function resolveBodyParts(){
     let changed = false;
@@ -1495,6 +1498,89 @@
       }
     }
     if(changed){ save(); renderAll(); }
+    fillFriezaDays();
+  }
+
+  // ---- Frieza days: body part name + matching clip from the Build & Burn playlist, rotating ----
+  const PLAYLIST_ID = 'PLbKkGgCVXbhY';
+  async function loadPlaylist(){
+    const ck = 'pl_' + PLAYLIST_ID;
+    try{
+      const c = JSON.parse(localStorage.getItem(ck) || 'null');
+      if(c && c.items && c.items.length && Date.now() - c.ts < 7*864e5) return c.items;
+    }catch(e){}
+    const plUrl = 'https://www.youtube.com/playlist?list=' + PLAYLIST_ID;
+    const fromHtml = html => {
+      const out = [];
+      html.split('"playlistVideoRenderer":').slice(1).forEach(chunk => {
+        const v = chunk.match(/"videoId":"([\w-]{11})"/);
+        const t = chunk.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || chunk.match(/"title":\{"simpleText":"((?:[^"\\]|\\.)*)"/);
+        const s = chunk.match(/"lengthSeconds":"(\d+)"/);
+        if(v && t) out.push({ vid: v[1], title: JSON.parse('"' + t[1] + '"'), secs: s ? +s[1] : 0 });
+      });
+      return out;
+    };
+    const fromMd = md => {
+      const out = [], re = /\[([^\]\[]{4,200})\]\(https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=([\w-]{11})[^)]*\)/g;
+      let m; while((m = re.exec(md))) out.push({ vid: m[2], title: m[1].trim(), secs: 0 });
+      return out;
+    };
+    const tries = [
+      ['https://api.allorigins.win/raw?url=' + encodeURIComponent(plUrl), fromHtml],
+      ['https://corsproxy.io/?url=' + encodeURIComponent(plUrl), fromHtml],
+      ['https://r.jina.ai/' + plUrl, fromMd]
+    ];
+    for(const [u, parse] of tries){
+      try{
+        const r = await fetch(u);
+        if(!r.ok) continue;
+        const seen = new Set(), items = parse(await r.text()).filter(x => !seen.has(x.vid) && seen.add(x.vid));
+        if(items.length){ try{ localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), items })); }catch(e){} return items; }
+      }catch(e){}
+    }
+    return null;
+  }
+
+  let filling = false;
+  async function fillFriezaDays(){
+    if(filling) return; filling = true;
+    try{
+      const days = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && data[ds] && data[ds].exercises &&
+        data[ds].exercises.some(x => x.autoPart && x.partV === 2 && !x.fillV3)).sort();
+      if(!days.length) return;
+      const pl = await loadPlaylist();
+      if(!pl) return; // retry on next load
+      const isAbsPart = p => p === 'Abs' || p === 'Core';
+      const vids = pl.map(x => ({ ...x, parts: partsFromTitle(x.title) }))
+        .filter(x => !(x.parts.length && x.parts.every(isAbsPart)));
+      // last date each playlist clip was used, for rotation
+      const lastUsed = {};
+      Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds)).sort().forEach(ds => {
+        (data[ds].exercises || []).forEach(x => { const v = x.url && extractYouTubeId(x.url); if(v) lastUsed[v] = ds; });
+      });
+      days.forEach(ds => {
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV3);
+        const want = ex.name.split(' + ').map(s => s.trim()).filter(Boolean);
+        // remove the Frieza clips themselves; keep the body-part name
+        const dropIds = d.exercises.filter(x => x.url).map(x => x.id);
+        d.exercises = d.exercises.filter(x => !dropIds.includes(x.id));
+        d.selectedIds = (d.selectedIds || []).filter(id => !dropIds.includes(id));
+        const score = v => v.parts.filter(p => want.includes(p)).length;
+        let pool = vids.filter(v => score(v) > 0);
+        if(!pool.length) pool = vids.filter(v => v.parts.includes('Full Body'));
+        if(!pool.length) pool = vids;
+        pool.sort((a, b) => ((lastUsed[a.vid] || '') < (lastUsed[b.vid] || '') ? -1 : (lastUsed[a.vid] || '') > (lastUsed[b.vid] || '') ? 1 : 0)
+          || score(b) - score(a) || pl.findIndex(x => x.vid === a.vid) - pl.findIndex(x => x.vid === b.vid));
+        const pick = pool[0];
+        if(pick){
+          d.exercises.push({ id: newId(), url: ytUrl(pick.vid) });
+          lastUsed[pick.vid] = ds;
+          if(!videoTags[pick.vid] || videoTags[pick.vid] === 'exercise') videoTags[pick.vid] = pick.title.split('|')[0].trim().slice(0, 60);
+        }
+        ex.fillV3 = true;
+      });
+      save(); renderAll();
+    } finally { filling = false; }
   }
 
   renderAll();
