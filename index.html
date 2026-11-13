@@ -1346,26 +1346,28 @@
   });
 
   // ---- One-time plan: Frieza (Sun/Mon/Wed/Fri) + abs/core (Tue/Thu/Sat), 1-week trial ----
-  const PLAN = {
-    id: 'frieza-trial-2026-11-13',
-    start: '2026-11-13',           // wipe exercises from this date onward
-    end:   '2026-11-21',           // fill through this date
-    friezaDow: [0,1,3,5],          // Sun Mon Wed Fri
-    absDow: [2,4,6],               // Tue Thu Sat
-    // Midas Movement "Frieza" week 1, days 1-6 (day 7 = rest)
-    frieza: [
-      ['dsEfSsrgUQw','Uz0av3-XX4I'],
-      ['7HFt7mBHNl4','5-QWUcbN7vY'],
-      ['HG7_XInTExo','JwX_8JAve6w'],
-      ['dsEfSsrgUQw','qOkfr6xOylM'],
-      ['7HFt7mBHNl4','5-QWUcbN7vY'],
-      ['HG7_XInTExo','JwX_8JAve6w']
-    ]
-  };
+  // Midas Movement "Frieza": 30 days, null = rest day
+  const FRIEZA = [
+    ['dsEfSsrgUQw','Uz0av3-XX4I'], ['7HFt7mBHNl4','5-QWUcbN7vY'], ['HG7_XInTExo','JwX_8JAve6w'],
+    ['dsEfSsrgUQw','qOkfr6xOylM'], ['7HFt7mBHNl4','5-QWUcbN7vY'], ['HG7_XInTExo','JwX_8JAve6w'], null,
+    ['dsEfSsrgUQw','Uz0av3-XX4I'], ['7HFt7mBHNl4','5-QWUcbN7vY'], ['HG7_XInTExo','JwX_8JAve6w'], null,
+    ['HG7_XInTExo'], ['dsEfSsrgUQw','qOkfr6xOylM'], ['7HFt7mBHNl4','5-QWUcbN7vY'], ['dsEfSsrgUQw','JwX_8JAve6w'],
+    ['7HFt7mBHNl4','Uz0av3-XX4I'], ['HG7_XInTExo','JwX_8JAve6w'], null,
+    ['7HFt7mBHNl4','JwX_8JAve6w'], ['dsEfSsrgUQw','Uz0av3-XX4I'], ['HG7_XInTExo'], ['7HFt7mBHNl4','5-QWUcbN7vY'],
+    ['qOkfr6xOylM'], null,
+    ['HG7_XInTExo','JwX_8JAve6w'], ['dsEfSsrgUQw','Uz0av3-XX4I'], ['7HFt7mBHNl4','5-QWUcbN7vY'],
+    ['dsEfSsrgUQw','qOkfr6xOylM'], ['7HFt7mBHNl4','Uz0av3-XX4I'], ['HG7_XInTExo','JwX_8JAve6w']
+  ];
+  const friezaFrom = n => FRIEZA.map((vids, i) => ({ n: i+1, vids })).filter(x => x.vids && x.n >= n);
+  const PLANS = [
+    { id: 'frieza-trial-2026-11-13', start: '2026-11-13', end: '2026-11-21', friezaDow: [0,1,3,5], absDow: [2,4,6], frieza: friezaFrom(1) },
+    // continue Frieza (rest days skipped) until the program ends; abs on Tue/Thu/Sat through range end
+    { id: 'frieza-full-2026-11-22', start: '2026-11-22', end: RANGE_END, friezaDow: [0,1,3,5], absDow: [2,4,6], frieza: friezaFrom(6) }
+  ];
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   const ytUrl = vid => 'https://www.youtube.com/watch?v=' + vid;
 
-  function applyPlan(){
+  function applyPlanFor(PLAN){
     const startDay = data[PLAN.start];
     if(startDay && startDay.planApplied === PLAN.id) return false;
     const dowOf = ds => toDate(ds).getDay();
@@ -1418,11 +1420,11 @@
     WEEKS.flat().filter(ds => ds >= PLAN.start && ds <= PLAN.end).forEach(ds => {
       const d = ensureDay(ds), dow = dowOf(ds);
       if(PLAN.friezaDow.includes(dow) && fi < PLAN.frieza.length){
-        const vids = PLAN.frieza[fi];
-        d.exercises.push({ id: newId(), url: '', name: 'Frieza D' + (fi+1) + ' · loading body part…', autoPart: vids, friezaDay: fi+1 });
+        const { n, vids } = PLAN.frieza[fi];
+        d.exercises.push({ id: newId(), url: '', name: 'Frieza D' + n + ' · loading body part…', autoPart: vids, friezaDay: n });
         vids.forEach(v => {
           d.exercises.push({ id: newId(), url: ytUrl(v) });
-          if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = 'Frieza D' + (fi+1);
+          if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = 'Frieza D' + n;
         });
         fi++;
       } else if(PLAN.absDow.includes(dow)){
@@ -1431,8 +1433,13 @@
     });
     ensureDay(PLAN.start).planApplied = PLAN.id;
     save(); renderAll();
-    resolveBodyParts();
     return true;
+  }
+  function applyPlan(){
+    let any = false;
+    PLANS.forEach(P => { if(applyPlanFor(P)) any = true; });
+    if(any) resolveBodyParts();
+    return any;
   }
 
   // body part comes from the YouTube titles of the day's two Frieza clips
@@ -1568,6 +1575,8 @@
     'Calves':['Legs'], 'Glutes':['Glutes','Legs'], 'Lower Body':['Legs','Glutes'], 'Upper Body':['Chest','Back','Shoulders'],
     'Push':['Chest','Shoulders','Triceps'], 'Pull':['Back','Biceps'], 'Full Body':['Chest','Back','Legs','Shoulders']
   };
+  const LEG_EXTRA = 'Kx9G58FGeNI';
+  const COOLDOWN = { title: '5 MIN Full Body Cooldown Stretch | After Your Workout', secs: 333 };
   const normT = t => (t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const fmtLen = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 
@@ -1590,7 +1599,7 @@
         });
       });
 
-      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV4));
+      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV === 2 && !x.fillV5));
       const keyOf = x => x.url ? extractYouTubeId(x.url) : (x.catTitle ? normT(x.catTitle) : null);
       const lastUsed = {};
       allDays.forEach(ds => (data[ds].exercises || []).forEach(x => {
@@ -1599,7 +1608,7 @@
       }));
 
       days.forEach(ds => {
-        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV4);
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV5);
         const want = ex.name.split(' + ').map(s => s.trim()).filter(p => p && p !== 'Abs' && p !== 'Core');
         // clear the day's clips (Frieza clips / earlier picks); keep the body-part name
         const dropIds = d.exercises.filter(x => x !== ex && !x.autoPart).map(x => x.id);
@@ -1628,7 +1637,19 @@
             d.exercises.push({ id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label });
           }
         });
-        ex.fillV3 = true; ex.fillV4 = true;
+        // leg days: extra leg clip; every weight day ends with the cooldown
+        if(want.some(w => (PART_GROUP[w] || [w]).includes('Legs'))){
+          d.exercises.push({ id: newId(), url: ytUrl(LEG_EXTRA) });
+          if(!videoTags[LEG_EXTRA] || videoTags[LEG_EXTRA] === 'exercise') videoTags[LEG_EXTRA] = 'Legs (extra)';
+        }
+        const cv = byTitle[normT(COOLDOWN.title)];
+        if(cv){
+          d.exercises.push({ id: newId(), url: ytUrl(cv) });
+          if(!videoTags[cv] || videoTags[cv] === 'exercise') videoTags[cv] = 'Cooldown';
+        } else {
+          d.exercises.push({ id: newId(), url: '', name: '▶ Cooldown Stretch (' + fmtLen(COOLDOWN.secs) + ')', catTitle: COOLDOWN.title, catLabel: 'Cooldown' });
+        }
+        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true;
         changed = true;
       });
       if(changed){ save(); renderAll(); }
