@@ -1587,6 +1587,51 @@
     'Calves':['Legs'], 'Glutes':['Glutes','Legs'], 'Lower Body':['Legs','Glutes'], 'Upper Body':['Chest','Back','Shoulders'],
     'Push':['Chest','Shoulders','Triceps'], 'Pull':['Back','Biceps'], 'Full Body':['Chest','Back','Legs','Shoulders']
   };
+  // real video IDs of the "Midas Build & Burn" playlist (read from YouTube via Chrome, Nov 17 2026)
+  const PL_IDS = {
+    '11 MIN Abs & Core Workout | Floor Only, No Equipment':'p2BxAO04opE',
+    '11 MIN Single Dumbbell Core Workout | Stability, No Crunches':'-oo58y1nSKc',
+    '11 MIN Standing Abs & Core Workout | No Floor Work':'XaNwPa0WMA8',
+    '20 MIN Abs & Cardio Workout You Can Do Anywhere':'k4ruquag5zY',
+    '15 MIN Abs & Cardio Workout':'xpQ1dl_3qCI',
+    '10 MIN Single Dumbbell Abs & Core Workout':'JwX_8JAve6w',
+    '20 MIN Abs & Cardio Workout | No Equipment & No Repeats':'wKJqlp8Uv0g',
+    '10 Minute Core & ABs for Beginners! | No Equipment #1':'fnSisC41rEc',
+    '10 MIN Beginner Abs Workout | No Planks, No Equipment':'6ekcgcyXy4g',
+    '15-Min Dumbbell LEGS Finisher Workout + Cooldown Stretch! | Build & Burn Ep. 33':'Oav3OHo8So0',
+    '15 MIN Dumbbell Only Legs Workout At Home':'YWaOyO-aSrw',
+    '10 MIN Dumbbell Legs & Glutes Finisher':'yCXRmUsBkoM',
+    '15 MIN Dumbbell Arms & Shoulders Workout | No Repeats':'Ufu__pOr-1o',
+    '10 MIN Lightweight Dumbbell Triceps | No Bench, No Repeats':'KaH5r7P_gJQ',
+    '10 MIN Dumbbell Triceps Workout (No Bench)':'qOkfr6xOylM',
+    '10 MIN Dumbbell Biceps & Forearm Workout':'5-QWUcbN7vY',
+    '10 Minute Dumbbell Forearms Finisher Workout | Build Muscle & Burn Fat 20':'2HxwBbDb_Yg',
+    '9 MIN Dumbbell Biceps & Forearms Finisher':'7QGsXD0O6gM',
+    '10-Minute Aesthetic Biceps & Forearms Workout | Build & Burn Ep. 31':'7Zq8BJkN9AE',
+    '10-Min Lightweight Dumbbell Biceps & Forearms | No Bench, No Repeats':'C1-hjYbfcxU',
+    '10 MIN Dumbbell Back & Biceps Finisher':'GuT1ELGrcKw',
+    '15 MIN Dumbbell Back Workout | No Bench':'N_cRtj2viK8',
+    '10 MIN Lightweight Dumbbell Upper Back & Rear Delts | No Repeats':'ScYAW6xJgzA',
+    '15-Min Lightweight Dumbbell Chest Workout | No Bench + Strict Reps':'C1HcGNvm5Ug',
+    '15 MIN Dumbbell Chest Workout (No Bench)':'dsEfSsrgUQw',
+    '10 MIN Dumbbell Shoulders Workout (No Bench)':'Uz0av3-XX4I',
+    '12 MIN Dumbbell Shoulder Finisher | Front, Side & Rear Delts':'vFbl9BzLyvo',
+    '3 MIN Upper Body Warm Up | Before Dumbbell Training':'UkBW7QgqzaU',
+    '5 MIN Full Body Cooldown Stretch | After Your Workout':'cKB5DHdn_Qs'
+  };
+  // Midas Shorts that link to each playlist clip — they show sets / reps / rest on screen
+  const SHORTS = {
+    'Oav3OHo8So0':['tZ_Ra7_BEkE'], 'YWaOyO-aSrw':['IVL8jTes48Q'],
+    'Ufu__pOr-1o':['bam85Ytu2Cg','01Nq8u4Mk5U','oRFpV8qvoiY'], 'KaH5r7P_gJQ':['Fd9PJo9V5lk','299PVPp5g5E'],
+    '5-QWUcbN7vY':['RPSLYDgtqV4'], '2HxwBbDb_Yg':['jnUcVzcAfHA'], '7QGsXD0O6gM':['PNI5ovxfnU0','K0vi96c5AZ4'],
+    '7Zq8BJkN9AE':['_hhWEXxU1RE','dCg9Cn4ER18'], 'C1-hjYbfcxU':['_d_f2SABfHY','cO0MiOaYJQc','sPzVXOS6wZc','stpeLhou6Ug','0iSg-4Obo9w'],
+    'N_cRtj2viK8':['gvLMr8CzgiI'], 'C1HcGNvm5Ug':['k2k1YwDmS64','iBobOgCUR3A','uyHzEtgFi_w'],
+    'p2BxAO04opE':['5ENbONGh-q8'], 'k4ruquag5zY':['DzogrpdUSRY'], 'xpQ1dl_3qCI':['5cJauw_y3rc'], '6ekcgcyXy4g':['YCNnRCPftMg']
+  };
+  const shortsFor = v => (SHORTS[v] || []).map((sid, i, a) => {
+    if(!videoTags[sid] || videoTags[sid] === 'exercise') videoTags[sid] = 'Short · sets/reps' + (a.length > 1 ? ' ' + (i+1) : '');
+    return { id: newId(), url: 'https://www.youtube.com/shorts/' + sid };
+  });
   const LEG_EXTRA = 'Kx9G58FGeNI';
   const UPPER_WARMUP = { title: '3 MIN Upper Body Warm Up | Before Dumbbell Training', secs: 210 };
   const COOLDOWN = { title: '5 MIN Full Body Cooldown Stretch | After Your Workout', secs: 333 };
@@ -1606,20 +1651,23 @@
     ['10 MIN Beginner Abs Workout | No Planks, No Equipment', 616, 'abs']
   ].map(([title, secs, kind]) => ({ title, secs, kind }));
   const ABS_FROM = '2026-11-14';
+  const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 
   // rebuild every Tue/Thu/Sat from ABS_FROM with abs clips only, continuing after the last abs clip used before
   async function rebuildAbsDays(byTitle){
     const marker = ensureDay(ABS_FROM);
-    if(marker.absV2) return false;
+    if(marker.absV3) return false;
     const dowOf = ds => toDate(ds).getDay();
-    const past = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && ds < ABS_FROM && [0,2,4,6].includes(dowOf(ds))).sort();
+    const from = todayISO() > ABS_FROM ? todayISO() : ABS_FROM; // never rewrite days already past
+    const past = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && ds < from && [0,2,4,6].includes(dowOf(ds))).sort();
     const ids = [...new Set(past.flatMap(ds => (data[ds].exercises || []).map(x => x.url && extractYouTubeId(x.url)).filter(Boolean)))];
-    const titles = await Promise.all(ids.map(fetchTitle));
-    if(ids.length && titles.every(t => !t)) return false; // titles unreachable — retry next load
     const catOf = {};
-    ids.forEach((v, i) => {
+    ABS_CAT.forEach(c => { const v = byTitle[normT(c.title)]; if(v) catOf[v] = c; });
+    const unknown = ids.filter(v => !catOf[v]);
+    const titles = await Promise.all(unknown.map(fetchTitle));
+    unknown.forEach((v, i) => {
       const c = titles[i] && ABS_CAT.find(c => normT(c.title) === normT(titles[i]));
-      if(c){ catOf[v] = c; byTitle[normT(c.title)] = byTitle[normT(c.title)] || v; }
+      if(c) catOf[v] = c;
     });
     let lastA = -1, lastC = -1;
     past.forEach(ds => (data[ds].exercises || []).forEach(x => {
@@ -1630,17 +1678,17 @@
     let ai = lastA < 0 ? -1 : absL.indexOf(ABS_CAT[lastA]), ci = lastC < 0 ? -1 : coreL.indexOf(ABS_CAT[lastC]);
     const entry = c => {
       const v = byTitle[normT(c.title)], label = c.title.split('|')[0].trim().slice(0, 60);
-      if(v){ if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = label; return { id: newId(), url: ytUrl(v) }; }
-      return { id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label };
+      if(v){ if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = label; return [{ id: newId(), url: ytUrl(v) }, ...shortsFor(v)]; }
+      return [{ id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label }];
     };
-    WEEKS.flat().filter(ds => ds >= ABS_FROM && [2,4,6].includes(dowOf(ds))).forEach(ds => {
+    WEEKS.flat().filter(ds => ds >= from && [2,4,6].includes(dowOf(ds))).forEach(ds => {
       const d = ensureDay(ds);
       ai = (ai + 1) % absL.length;
-      const a = absL[ai], ex = [entry(a)];
-      if(a.secs < 900){ ci = (ci + 1) % coreL.length; ex.push(entry(coreL[ci])); }
+      const a = absL[ai], ex = [...entry(a)];
+      if(a.secs < 900){ ci = (ci + 1) % coreL.length; ex.push(...entry(coreL[ci])); }
       d.exercises = ex; d.selectedIds = [];
     });
-    marker.absV2 = true;
+    marker.absV2 = true; marker.absV3 = true;
     return true;
   }
 
@@ -1648,9 +1696,8 @@
   async function fillFriezaDays(){
     if(filling) return; filling = true;
     try{
-      const pl = await loadPlaylist();
       const byTitle = {};
-      (pl || []).forEach(x => { byTitle[normT(x.title)] = x.vid; });
+      Object.entries(PL_IDS).forEach(([t, v]) => { byTitle[normT(t)] = v; });
       let changed = await rebuildAbsDays(byTitle);
       const allDays = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds)).sort();
 
@@ -1663,7 +1710,8 @@
         });
       });
 
-      const days = allDays.filter(ds => (data[ds].exercises || []).some(x => x.autoPart && x.partV >= 2 && !x.fillV8));
+      const today = todayISO();
+      const days = allDays.filter(ds => ds >= today && (data[ds].exercises || []).some(x => x.autoPart && x.partV >= 2 && !x.fillV9));
       const keyOf = x => x.url ? extractYouTubeId(x.url) : (x.catTitle ? normT(x.catTitle) : null);
       const lastUsed = {};
       // only days NOT being refilled count as "used" — old picks on days we rebuild must not skew the rotation
@@ -1674,7 +1722,7 @@
       }));
 
       days.forEach(ds => {
-        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV8);
+        const d = data[ds], ex = d.exercises.find(x => x.autoPart && !x.fillV9);
         const want = ex.name.split(' + ').map(s => s.trim()).filter(p => p && p !== 'Abs' && p !== 'Core');
         // clear the day's clips (Frieza clips / earlier picks); keep the body-part name
         const dropIds = d.exercises.filter(x => x !== ex && !x.autoPart).map(x => x.id);
@@ -1696,7 +1744,7 @@
           const label = c.title.split('|')[0].trim().slice(0, 60);
           const v = byTitle[normT(c.title)];
           if(v){
-            d.exercises.push({ id: newId(), url: ytUrl(v) });
+            d.exercises.push({ id: newId(), url: ytUrl(v) }, ...shortsFor(v));
             if(!videoTags[v] || videoTags[v] === 'exercise') videoTags[v] = label;
           } else {
             d.exercises.push({ id: newId(), url: '', name: '▶ ' + label + ' (' + fmtLen(c.secs) + ')', catTitle: c.title, catLabel: label });
@@ -1728,7 +1776,7 @@
         } else {
           d.exercises.push({ id: newId(), url: '', name: '▶ Cooldown Stretch (' + fmtLen(COOLDOWN.secs) + ')', catTitle: COOLDOWN.title, catLabel: 'Cooldown' });
         }
-        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true; ex.fillV7 = true; ex.fillV8 = true;
+        ex.fillV3 = true; ex.fillV4 = true; ex.fillV5 = true; ex.fillV6 = true; ex.fillV7 = true; ex.fillV8 = true; ex.fillV9 = true;
         changed = true;
       });
       if(changed){ save(); renderAll(); }
