@@ -195,6 +195,11 @@
     appearance: textfield;
   }
   .shift-panel input[type="date"]{ width:126px; text-align:left; }
+  .shift-panel select{
+    font-family:'JetBrains Mono', monospace; font-size:11px; padding:5px 6px;
+    border: 1px solid var(--paper-line-strong); border-radius:3px;
+    background: #081420; color: var(--ink-dark);
+  }
   .shift-panel input::-webkit-outer-spin-button,
   .shift-panel input::-webkit-inner-spin-button{
     -webkit-appearance: none;
@@ -588,8 +593,9 @@
     <button class="jump-btn" id="jumpToday">jump to this week ↓</button>
     <div class="shift-panel">
       <label for="shiftFromInput">shift from</label>
-      <input type="date" id="shiftFromInput" min="2026-08-23" max="2026-10-31">
-      <label for="shiftDaysInput">forward by</label>
+      <input type="date" id="shiftFromInput">
+      <select id="shiftDirInput" aria-label="direction"><option value="1">forward</option><option value="-1">back</option></select>
+      <label for="shiftDaysInput">by</label>
       <input type="number" id="shiftDaysInput" min="1" max="60" value="1">
       <span>days</span>
       <button class="ghost-btn" id="shiftBtn">shift</button>
@@ -612,7 +618,8 @@
 (function(){
   const STORAGE_KEY = 'trainingLogWeekly';
   const RANGE_START = '2026-08-23';
-  const RANGE_END   = '2027-01-02';
+  const BASE_RANGE_END = '2027-01-02';
+  let RANGE_END = BASE_RANGE_END; // grows to cover the latest day with data (see refreshRange)
   const CARDIO_GOAL = 150;
   const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -870,7 +877,26 @@
     }
     return weeks;
   }
-  const WEEKS = buildWeeks();
+  let WEEKS = [];
+  const hasContent = d => d && ((d.exercises && d.exercises.length) || d.done || d.cardioMins);
+  function refreshRange(){
+    const latest = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && hasContent(data[ds])).sort().pop();
+    let end = BASE_RANGE_END;
+    if(latest && latest > end){ end = addDaysStr(latest, 6 - toDate(latest).getDay()); }
+    if(end === RANGE_END && WEEKS.length) return;
+    RANGE_END = end;
+    WEEKS = buildWeeks();
+    const h1 = document.querySelector('.page-head h1');
+    if(h1){
+      const f = ds => toDate(ds).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+      h1.textContent = f(RANGE_START) + ' — ' + f(RANGE_END);
+    }
+    const sub = document.querySelector('.page-head .subtitle');
+    if(sub) sub.textContent = sub.textContent.replace(/^\d+ weeks/, WEEKS.length + ' weeks');
+    const pick = document.getElementById('shiftFromInput');
+    if(pick){ pick.min = RANGE_START; pick.max = RANGE_END; }
+  }
+  refreshRange();
 
   function escapeHtml(str){
     return String(str || '')
@@ -1081,7 +1107,7 @@
     }).join('');
   }
 
-  function renderAll(){ renderStats(); renderWeeks(); }
+  function renderAll(){ refreshRange(); renderStats(); renderWeeks(); }
 
   // --- Event delegation ---
   document.getElementById('weeksContainer').addEventListener('click', function(e){
@@ -1258,23 +1284,29 @@
     if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
   });
 
-  // --- Shift a chosen date (and everything after it) forward by N days ---
-  function shiftFutureDays(pivot, n){
-    const allDates = WEEKS.flat(); // ascending, fixed 70-day range
-    const newData = {};
-    // days before the chosen pivot are untouched
-    allDates.forEach(ds => { if(ds < pivot && data[ds]) newData[ds] = data[ds]; });
-    // pivot and every day after it move forward by n; anything that lands
-    // past Jan 2 falls out of the tracked range and is dropped
-    allDates.forEach(ds => {
-      if(ds >= pivot && data[ds]){
-        const shifted = addDaysStr(ds, n);
-        if(shifted >= RANGE_START && shifted <= RANGE_END){
-          newData[shifted] = data[ds];
-        }
-      }
+  // --- Shift a chosen date (and everything after it) forward or back by N days ---
+  // only the workout itself moves (clips, picks, done, cardio); any other keys on a
+  // day are plan markers tied to that date and stay put so the auto-plans don't re-run
+  const MOVABLE = ['exercises','selectedIds','done','cardioMins'];
+  const emptyDay = () => ({ exercises:[], selectedIds:[], done:false, cardioMins:0 });
+  function shiftDays(pivot, n){
+    const newData = {}, moving = [];
+    Object.keys(data).forEach(ds => {
+      const d = data[ds];
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(ds) || ds < pivot){ newData[ds] = d; return; }
+      const pinned = {}, mv = {};
+      Object.keys(d).forEach(k => { (MOVABLE.includes(k) ? mv : pinned)[k] = d[k]; });
+      if(Object.keys(pinned).length) newData[ds] = Object.assign(emptyDay(), pinned);
+      moving.push([addDaysStr(ds, n), mv]);
+    });
+    moving.forEach(([t, mv]) => {
+      if(t < RANGE_START) return;
+      const keep = {};
+      Object.keys(newData[t] || {}).forEach(k => { if(!MOVABLE.includes(k)) keep[k] = newData[t][k]; });
+      newData[t] = Object.assign(emptyDay(), keep, mv);
     });
     data = newData;
+    openFormDate = null; editingClip = null;
     save();
     renderAll();
   }
@@ -1283,28 +1315,28 @@
   document.getElementById('shiftFromInput').value = todayStr();
 
   document.getElementById('shiftBtn').addEventListener('click', function(){
-    const dateInput = document.getElementById('shiftFromInput');
-    const daysInput = document.getElementById('shiftDaysInput');
-    const pivot = dateInput.value;
-    const n = parseInt(daysInput.value, 10);
+    const pivot = document.getElementById('shiftFromInput').value;
+    const dir = parseInt(document.getElementById('shiftDirInput').value, 10);
+    const days = parseInt(document.getElementById('shiftDaysInput').value, 10);
     if(!pivot || pivot < RANGE_START || pivot > RANGE_END){
-      alert('pick a valid date within Aug 23, 2026 – Jan 2, 2027');
+      alert('pick a date within the log');
       return;
     }
-    if(!n || n < 1){
+    if(!days || days < 1){
       alert('enter a number of days to shift by (1 or more)');
       return;
     }
-    const allDates = WEEKS.flat();
-    const affected = allDates.filter(ds => ds >= pivot && data[ds] &&
-      ((data[ds].exercises && data[ds].exercises.length) || data[ds].done || data[ds].cardioMins));
-    const overflow = affected.filter(ds => addDaysStr(ds, n) > RANGE_END);
-    let msg = `Shift ${pivot} and every day after it forward by ${n} day${n===1?'':'s'}?`;
-    if(overflow.length > 0){
-      msg += `\n\n${overflow.length} day(s) with data would land after Jan 2 and be lost.`;
+    const n = dir * days;
+    const withData = Object.keys(data).filter(ds => /^\d{4}-\d{2}-\d{2}$/.test(ds) && hasContent(data[ds]));
+    let msg = `Shift ${pivot} and every day after it ${n > 0 ? 'forward' : 'back'} by ${days} day${days===1?'':'s'}?`;
+    if(n < 0){
+      const hit = withData.filter(ds => ds < pivot && ds >= addDaysStr(pivot, n));
+      if(hit.length) msg += `\n\n${hit.length} day(s) before ${pivot} already have workouts and will be replaced.`;
+      const lost = withData.filter(ds => ds >= pivot && addDaysStr(ds, n) < RANGE_START);
+      if(lost.length) msg += `\n\n${lost.length} day(s) would land before the start of the log and be lost.`;
     }
     if(!window.confirm(msg)) return;
-    shiftFutureDays(pivot, n);
+    shiftDays(pivot, n);
   });
 
   // --- Backup ---
